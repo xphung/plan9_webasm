@@ -59,7 +59,7 @@ AOBJS = $(LIBC_OBJS)
 GENH =
 
 CFLAGS_ALL = $(CFLAGS_C99FSE)
-CFLAGS_ALL += #-D_POSIX_SOURCE -D_XOPEN_SOURCE=700 #-D_BSD_EXTENSION -D_SUSV2_SOURCE
-CFLAGS_ALL += -isystem $(srcdir)/sys/include
+CFLAGS_ALL += -D_POSIX_SOURCE -D_XOPEN_SOURCE=700 #-D_BSD_EXTENSION -D_SUSV2_SOURCE
+CFLAGS_ALL += -isystem $(srcdir)/sys/include -isystem $(srcdir)/$(ARCH)/musl/arch -I$(srcdir)/$(ARCH)/musl/src/internal -isystem $(srcdir)/musl/include
 CFLAGS_ALL += $(CPPFLAGS) $(CFLAGS_AUTO) $(CFLAGS)
 

@@ -4,19 +4,13 @@
  * Revisions Copyright © 1999, 2000 Vita Nuova Limited.  All rights reserved.
  * Revisions Copyright © 2002, 2003 Corpus Callosum Corporation.  All rights reserved.
  */
-#define	_POSIX_SOURCE
 #include "dat.h"
 #include "fns.h"
 #include "error.h"
 #include "pthread.h"
 #include "raise.h"
-//#include <sys9.h>
 #include <tos.h>
-//#include <errno.h>
-//#include <fpuctl.h>
 #include "pwd.h"
-//#include "sys_types.h"
-//#include <time.h>
 
 char *hosttype = "POSIX";
 char *cputype = "Wasm32";

@@ -1,2 +1,4 @@
 # plan9_webasm
-v0.00: Initial upload of Plan9 R4 kernel, core libraries, core utils
+WebAssembly port of Plan9 C libraries, devices, filesystems, compiler, command line tools and Inferno kernel. 
+(I believe this is first operating system to be ported to WebAssembly!)
+

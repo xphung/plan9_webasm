@@ -44,7 +44,7 @@ SRC_SUBDIRS = sys/src/9 sys/src/fmt sys/src/libc
 SRC_SUBDIRS += sys/src/libmp sys/src/libsec sys/src/libm
 
 # command line utilities and C compiler
-SRC_SUBDIRS += sys/src/9sys sys/src/libbio sys/src/libstring sys/src/cmd #sys/src/libregexp #[regexp needs longjmp/setjmp]
+SRC_SUBDIRS += sys/src/9sys sys/src/libbio sys/src/libstring sys/src/utils #sys/src/libregexp #[regexp needs longjmp/setjmp]
 
 # C99 subset of musl library:
 #SRC_SUBDIRS += musl/src/ctype musl/src/env musl/src/errno musl/src/exit musl/src/locale musl/src/multibyte musl/src/prng musl/src/stdlib musl/src/string $(ARCH)/musl/src/signal musl/src/stdio musl/src/temp $(ARCH)/musl/src/time $(ARCH)/musl/src/internal $(ARCH)/musl/src/math $(ARCH)/musl/src/thread $(ARCH)/musl/src/thread # musl/src/fenv musl/src/math musl/src/complex musl/src/setjmp musl/src/malloc_dl

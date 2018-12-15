@@ -34,7 +34,7 @@ extern	char	*cputype;
 void _start() {
   char **args = {nil};
   kmain(0, args);
-  //main(0, args);
+  main(0, args);
 }
 
 #define main(n, v) kmain(n, v)

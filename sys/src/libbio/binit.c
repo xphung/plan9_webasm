@@ -1,15 +1,19 @@
-#include	<u.h>
-#include	<libc.h>
+#include	"lib9.h"
 #include	<bio.h>
 
-static	Biobufhdr*	wbufs[20];
+enum
+{
+	MAXBUFS	= 20
+};
+
+static	Biobuf*	wbufs[MAXBUFS];
 static	int		atexitflag;
 
 static
 void
 batexit(void)
 {
-	Biobufhdr *bp;
+	Biobuf *bp;
 	int i;
 
 	for(i=0; i<nelem(wbufs); i++) {
@@ -23,7 +27,7 @@ batexit(void)
 
 static
 void
-deinstall(Biobufhdr *bp)
+deinstall(Biobuf *bp)
 {
 	int i;
 
@@ -34,7 +38,7 @@ deinstall(Biobufhdr *bp)
 
 static
 void
-install(Biobufhdr *bp)
+install(Biobuf *bp)
 {
 	int i;
 
@@ -51,7 +55,7 @@ install(Biobufhdr *bp)
 }
 
 int
-Binits(Biobufhdr *bp, int f, int mode, uchar *p, int size)
+Binits(Biobuf *bp, int f, int mode, uchar *p, int size)
 {
 
 	p += Bungetsize;	/* make room for Bungets */
@@ -59,7 +63,7 @@ Binits(Biobufhdr *bp, int f, int mode, uchar *p, int size)
 
 	switch(mode&~(OCEXEC|ORCLOSE|OTRUNC)) {
 	default:
-		fprint(2, "Binits: unknown mode %d\n", mode);
+		fprint(2, "Bopen: unknown mode %d\n", mode);
 		return Beof;
 
 	case OREAD:
@@ -101,11 +105,13 @@ Bopen(char *name, int mode)
 
 	switch(mode&~(OCEXEC|ORCLOSE|OTRUNC)) {
 	default:
-		fprint(2, "Bopen: unknown mode %#x\n", mode);
+		fprint(2, "Bopen: unknown mode %d\n", mode);
 		return 0;
+
 	case OREAD:
-		f = open(name, mode);
+		f = open(name, OREAD);
 		break;
+
 	case OWRITE:
 		f = create(name, mode, 0666);
 		break;
@@ -113,13 +119,15 @@ Bopen(char *name, int mode)
 	if(f < 0)
 		return 0;
 	bp = malloc(sizeof(Biobuf));
+	if(bp == nil)
+		return 0;
 	Binits(bp, f, mode, bp->b, sizeof(bp->b));
-	bp->flag = Bmagic;			/* mark bp open & malloced */
+	bp->flag = Bmagic;
 	return bp;
 }
 
 int
-Bterm(Biobufhdr *bp)
+Bterm(Biobuf *bp)
 {
 	int r;
 

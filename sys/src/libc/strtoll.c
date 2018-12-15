@@ -1,27 +1,22 @@
-#include <u.h>
-#include <libc.h>
-
-#define VLONG_MAX	~(1LL<<63)
-#define VLONG_MIN	(1LL<<63)
+#include "lib9.h"
 
 vlong
-strtoll(char *nptr, char **endptr, int base)
+strtoll(const char *nptr, char **endptr, int base)
 {
-	char *p;
-	vlong n, nn, m;
-	int c, ovfl, v, neg, ndig;
+	const char *p;
+	vlong n;
+	int c, v, neg, ndig;
 
 	p = nptr;
 	neg = 0;
 	n = 0;
 	ndig = 0;
-	ovfl = 0;
 
 	/*
 	 * White space
 	 */
-	for(;; p++) {
-		switch(*p) {
+	for(;;p++){
+		switch(*p){
 		case ' ':
 		case '\t':
 		case '\n':
@@ -44,57 +39,42 @@ strtoll(char *nptr, char **endptr, int base)
 	 * Base
 	 */
 	if(base==0){
-		base = 10;
-		if(*p == '0') {
+		if(*p != '0')
+			base = 10;
+		else{
 			base = 8;
-			if(p[1]=='x' || p[1]=='X') {
+			if(p[1]=='x' || p[1]=='X'){
 				p += 2;
 				base = 16;
 			}
 		}
-	} else
-	if(base==16 && *p=='0') {
+	}else if(base==16 && *p=='0'){
 		if(p[1]=='x' || p[1]=='X')
 			p += 2;
-	} else
-	if(base<0 || 36<base)
+	}else if(base<0 || 36<base)
 		goto Return;
 
 	/*
 	 * Non-empty sequence of digits
 	 */
-	m = VLONG_MAX/base;
-	for(;; p++,ndig++) {
+	for(;; p++,ndig++){
 		c = *p;
 		v = base;
 		if('0'<=c && c<='9')
 			v = c - '0';
-		else
-		if('a'<=c && c<='z')
+		else if('a'<=c && c<='z')
 			v = c - 'a' + 10;
-		else
-		if('A'<=c && c<='Z')
+		else if('A'<=c && c<='Z')
 			v = c - 'A' + 10;
 		if(v >= base)
 			break;
-		if(n > m)
-			ovfl = 1;
-		nn = n*base + v;
-		if(nn < n)
-			ovfl = 1;
-		n = nn;
+		n = n*base + v;
 	}
-
-Return:
+    Return:
 	if(ndig == 0)
 		p = nptr;
 	if(endptr)
-		*endptr = p;
-	if(ovfl){
-		if(neg)
-			return VLONG_MIN;
-		return VLONG_MAX;
-	}
+		*endptr = (char*) p;
 	if(neg)
 		return -n;
 	return n;

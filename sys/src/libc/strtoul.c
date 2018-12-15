@@ -1,5 +1,4 @@
-#include <u.h>
-#include <libc.h>
+#include <lib9.h>
 
 #define ULONG_MAX	4294967295UL
 
@@ -10,7 +9,7 @@ strtoul(char *nptr, char **endptr, int base)
 	ulong n, nn, m;
 	int c, ovfl, neg, v, ndig;
 
-	p = nptr;
+	p = (char*)nptr;
 	neg = 0;
 	n = 0;
 	ndig = 0;

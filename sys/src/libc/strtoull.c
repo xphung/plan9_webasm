@@ -1,5 +1,4 @@
-#include <u.h>
-#include <libc.h>
+#include <lib9.h>
 
 #define UVLONG_MAX	(1LL<<63)
 

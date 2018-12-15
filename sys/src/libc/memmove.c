@@ -1,35 +1,37 @@
-#include	<u.h>
-#include	<libc.h>
+#include <lib9.h>
 
-void*
-memmove(void *a1, void *a2, ulong n)
+#define uintptr_t uintptr
+#define WT size_t
+#define WS (sizeof(WT))
+
+#undef  memmove
+#define memmove	memcpy
+void *memmove(void *dest, const void *src, size_t n)
 {
-	char *s1, *s2;
+	char *d = dest;
+	const char *s = src;
 
-	if((long)n < 0)
-		abort();
-	s1 = a1;
-	s2 = a2;
-	if((s2 < s1) && (s2+n > s1))
-		goto back;
-	while(n > 0) {
-		*s1++ = *s2++;
-		n--;
+	if (d==s) return d;
+
+	if (d<s) {
+		if ((uintptr_t)s % WS == (uintptr_t)d % WS) {
+			while ((uintptr_t)d % WS) {
+				if (!n--) return dest;
+				*d++ = *s++;
+			}
+			for (; n>=WS; n-=WS, d+=WS, s+=WS) *(WT *)d = *(WT *)s;
+		}
+		for (; n; n--) *d++ = *s++;
+	} else {
+		if ((uintptr_t)s % WS == (uintptr_t)d % WS) {
+			while ((uintptr_t)(d+n) % WS) {
+				if (!n--) return dest;
+				d[n] = s[n];
+			}
+			while (n>=WS) n-=WS, *(WT *)(d+n) = *(WT *)(s+n);
+		}
+		while (n) n--, d[n] = s[n];
 	}
-	return a1;
 
-back:
-	s1 += n;
-	s2 += n;
-	while(n > 0) {
-		*--s1 = *--s2;
-		n--;
-	}
-	return a1;
-}
-
-void*
-memcpy(void *a1, void *a2, ulong n)
-{
-	return memmove(a1, a2, n);
+	return dest;
 }

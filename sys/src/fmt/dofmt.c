@@ -1,5 +1,17 @@
-#include <u.h>
-#include <libc.h>
+/*
+ * The authors of this software are Rob Pike and Ken Thompson.
+ *              Copyright (c) 2002 by Lucent Technologies.
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose without fee is hereby granted, provided that this entire notice
+ * is included in all copies of any software which is or includes a copy
+ * or modification of this software and in all copies of the supporting
+ * documentation for such software.
+ * THIS SOFTWARE IS BEING PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED
+ * WARRANTY.  IN PARTICULAR, NEITHER THE AUTHORS NOR LUCENT TECHNOLOGIES MAKE ANY
+ * REPRESENTATION OR WARRANTY OF ANY KIND CONCERNING THE MERCHANTABILITY
+ * OF THIS SOFTWARE OR ITS FITNESS FOR ANY PARTICULAR PURPOSE.
+ */
+#include "lib9.h"
 #include "fmtdef.h"
 
 /* format the output into f->to and return the number of characters fmted  */
@@ -145,6 +157,8 @@ _fmtcpy(Fmt *f, void *vm, int n, int sz)
 		}
 		f->nfmt += rt - (Rune *)f->to;
 		f->to = rt;
+		if(m < me)
+			return -1;
 		if(fl & FmtLeft && _rfmtpad(f, w - n) < 0)
 			return -1;
 	}else{
@@ -236,18 +250,18 @@ _runefmt(Fmt *f)
 int
 fmtstrcpy(Fmt *f, char *s)
 {
-	int i, j;
-	Rune r;
-
+	int p, i;
 	if(!s)
 		return _fmtcpy(f, "<nil>", 5, 5);
 	/* if precision is specified, make sure we don't wander off the end */
 	if(f->flags & FmtPrec){
-		i = 0;
-		for(j=0; j<f->prec && s[i]; j++)
-			i += chartorune(&r, s+i);
-		return _fmtcpy(f, s, j, i);
+		p = f->prec;
+		for(i = 0; i < p; i++)
+			if(s[i] == 0)
+				break;
+		return _fmtcpy(f, s, utfnlen(s, i), i);	/* BUG?: won't print a partial rune at end */
 	}
+
 	return _fmtcpy(f, s, utflen(s), strlen(s));
 }
 
@@ -305,19 +319,13 @@ _percentfmt(Fmt *f)
 	return _fmtrcpy(f, x, 1);
 }
 
-enum {
-	/* %,#llb could emit a sign, "0b" and 64 digits with 21 commas */
-	Maxintwidth = 1 + 2 + 64 + 64/3,
-};
-
 /* fmt an integer */
 int
 _ifmt(Fmt *f)
 {
-	char buf[Maxintwidth + 1], *p, *conv;
+	char buf[70], *p, *conv;
 	uvlong vu;
 	ulong u;
-	uintptr pu;
 	int neg, base, i, n, fl, w, isv;
 
 	neg = 0;
@@ -326,12 +334,7 @@ _ifmt(Fmt *f)
 	vu = 0;
 	u = 0;
 	if(f->r == 'p'){
-		pu = va_arg(f->args, uintptr);
-		if(sizeof(uintptr) == sizeof(uvlong)){
-			vu = pu;
-			isv = 1;
-		}else
-			u = pu;
+		u = (ulong)va_arg(f->args, void*);
 		f->r = 'x';
 		fl |= FmtUnsigned;
 	}else if(fl & FmtVLong){
@@ -434,7 +437,7 @@ _ifmt(Fmt *f)
 				n++;
 		}
 	}
-	if((fl & FmtZero) && !(fl & (FmtLeft|FmtPrec))){
+	if((fl & FmtZero) && !(fl & FmtLeft)){
 		for(w = f->width; n < w && p > buf+3; n++)
 			*p-- = '0';
 		f->width = 0;
@@ -517,12 +520,12 @@ _flagfmt(Fmt *f)
 int
 _badfmt(Fmt *f)
 {
-	Rune x[3];
+	char x[3];
 
 	x[0] = '%';
 	x[1] = f->r;
 	x[2] = '%';
 	f->prec = 3;
-	_fmtrcpy(f, x, 3);
+	_fmtcpy(f, x, 3, 3);
 	return 0;
 }

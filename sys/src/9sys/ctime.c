@@ -216,7 +216,7 @@ readtimezone(void)
 	int i;
 
 	memset(buf, 0, sizeof(buf));
-	i = open("/env/timezone", 0);
+	i = -1; //TODO: FIXME:   open("/env/timezone", 0);
 	if(i < 0)
 		goto error;
 	if(read(i, buf, sizeof(buf)) >= sizeof(buf)){

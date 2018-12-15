@@ -1,5 +1,17 @@
-#include <u.h>
-#include <libc.h>
+/*
+ * The authors of this software are Rob Pike and Ken Thompson.
+ *              Copyright (c) 2002 by Lucent Technologies.
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose without fee is hereby granted, provided that this entire notice
+ * is included in all copies of any software which is or includes a copy
+ * or modification of this software and in all copies of the supporting
+ * documentation for such software.
+ * THIS SOFTWARE IS BEING PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED
+ * WARRANTY.  IN PARTICULAR, NEITHER THE AUTHORS NOR LUCENT TECHNOLOGIES MAKE ANY
+ * REPRESENTATION OR WARRANTY OF ANY KIND CONCERNING THE MERCHANTABILITY
+ * OF THIS SOFTWARE OR ITS FITNESS FOR ANY PARTICULAR PURPOSE.
+ */
+#include "lib9.h"
 #include "fmtdef.h"
 
 enum
@@ -29,16 +41,11 @@ static Convfmt knownfmt[] = {
 	',',	_flagfmt,
 	'-',	_flagfmt,
 	'C',	_runefmt,
-	'E',	_efgfmt,
-	'G',	_efgfmt,
 	'S',	_runesfmt,
 	'X',	_ifmt,
 	'b',	_ifmt,
 	'c',	_charfmt,
 	'd',	_ifmt,
-	'e',	_efgfmt,
-	'f',	_efgfmt,
-	'g',	_efgfmt,
 	'h',	_flagfmt,
 	'l',	_flagfmt,
 	'n',	_countfmt,
@@ -53,11 +60,31 @@ static Convfmt knownfmt[] = {
 
 int	(*doquote)(int);
 
-/*
- * _fmtlock() must be set
- */
-static int
-_fmtinstall(int c, Fmts f)
+static Fmts
+fmtfmt(int c)
+{
+	Convfmt *p, *ep;
+
+	ep = &fmtalloc.fmt[fmtalloc.nfmt];
+	for(p=fmtalloc.fmt; p<ep; p++)
+		if(p->c == c)
+			return p->fmt;
+
+	/* is this a predefined format char? */
+	for(p=knownfmt; p->c; p++)
+		if(p->c == c){
+			/* no need to lock; fmtinstall is idempotent */
+			fmtinstall(p->c, p->fmt);
+			while(p->fmt == nil)	/* loop until value is updated */
+				;
+			return p->fmt;
+		}
+
+	return _badfmt;
+}
+
+int
+fmtinstall(int c, Fmts f)
 {
 	Convfmt *p, *ep;
 
@@ -66,13 +93,17 @@ _fmtinstall(int c, Fmts f)
 	if(!f)
 		f = _badfmt;
 
+	_fmtlock();
+
 	ep = &fmtalloc.fmt[fmtalloc.nfmt];
 	for(p=fmtalloc.fmt; p<ep; p++)
 		if(p->c == c)
 			break;
 
-	if(p == &fmtalloc.fmt[Maxfmt])
+	if(p == &fmtalloc.fmt[Maxfmt]){
+		_fmtunlock();
 		return -1;
+	}
 
 	p->fmt = f;
 	if(p == ep){	/* installing a new format character */
@@ -80,57 +111,15 @@ _fmtinstall(int c, Fmts f)
 		p->c = c;
 	}
 
+	_fmtunlock();
 	return 0;
-}
-
-int
-fmtinstall(int c, Fmts f)
-{
-	int ret;
-
-	_fmtlock();
-	ret = _fmtinstall(c, f);
-	_fmtunlock();
-	return ret;
-}
-
-static Fmts
-fmtfmt(int c)
-{
-	Convfmt *p, *ep;
-
-	ep = &fmtalloc.fmt[fmtalloc.nfmt];
-	for(p=fmtalloc.fmt; p<ep; p++)
-		if(p->c == c){
-			while(p->fmt == nil)	/* loop until value is updated */
-				;
-			return p->fmt;
-		}
-
-	/* is this a predefined format char? */
-	_fmtlock();
-	for(p=knownfmt; p->c; p++)
-		if(p->c == c){
-			_fmtinstall(p->c, p->fmt);
-			_fmtunlock();
-			return p->fmt;
-		}
-	_fmtunlock();
-
-	return _badfmt;
 }
 
 void*
 _fmtdispatch(Fmt *f, void *fmt, int isrunes)
 {
 	Rune rune, r;
-	int i, n, w, p;
-	ulong fl;
-	void *ret;
-
-	w = f->width;
-	p = f->prec;
-	fl = f->flags;
+	int i, n;
 
 	f->flags = 0;
 	f->width = f->prec = 0;
@@ -146,8 +135,7 @@ _fmtdispatch(Fmt *f, void *fmt, int isrunes)
 		f->r = r;
 		switch(r){
 		case '\0':
-			ret = nil;
-			goto end;
+			return nil;
 		case '.':
 			f->flags |= FmtWidth|FmtPrec;
 			continue;
@@ -186,33 +174,15 @@ _fmtdispatch(Fmt *f, void *fmt, int isrunes)
 		case '*':
 			i = va_arg(f->args, int);
 			if(i < 0){
-				/*
-				 * negative precision =>
-				 * ignore the precision.
-				 */
-				if(f->flags & FmtPrec){
-					f->flags &= ~FmtPrec;
-					f->prec = 0;
-					continue;
-				}
 				i = -i;
 				f->flags |= FmtLeft;
 			}
 			goto numflag;
 		}
 		n = (*fmtfmt(r))(f);
-		if(n < 0){
-			ret = nil;
-			break;
-		}
-		if(n == 0){
-			ret = fmt;
-			break;
-		}
+		if(n < 0)
+			return nil;
+		if(n == 0)
+			return fmt;
 	}
-end:
-	f->width = w;
-	f->prec = p;
-	f->flags = fl;
-	return ret;
 }

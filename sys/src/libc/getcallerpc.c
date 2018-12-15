@@ -1,8 +1,7 @@
-#include <u.h>
-#include <libc.h>
+#include <lib9.h>
 
-uintptr
-getcallerpc(void*)
+ulong
+getcallerpc(void *x)
 {
-	return 0;
+  return x;
 }

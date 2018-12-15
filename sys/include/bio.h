@@ -1,8 +1,7 @@
-#pragma	src	"/sys/src/libbio"
-#pragma	lib	"libbio.a"
-
+#ifndef _BIO_H
+#define _BIO_H
 typedef	struct	Biobuf	Biobuf;
-typedef	struct	Biobufhdr	Biobufhdr;
+#define Biobufhdr	Biobuf
 
 enum
 {
@@ -16,9 +15,11 @@ enum
 	Bractive,
 	Bwactive,
 	Bracteof,
+
+	Bend
 };
 
-struct	Biobufhdr
+struct	Biobuf
 {
 	int	icount;		/* neg num of bytes at eob */
 	int	ocount;		/* num of bytes at bob */
@@ -32,11 +33,6 @@ struct	Biobufhdr
 	uchar*	bbuf;		/* pointer to beginning of buffer */
 	uchar*	ebuf;		/* pointer to end of buffer */
 	uchar*	gbuf;		/* pointer to good data in buf */
-};
-
-struct	Biobuf
-{
-	Biobufhdr;
 	uchar	b[Bungetsize+Bsize];
 };
 
@@ -47,28 +43,29 @@ struct	Biobuf
 #define	BLINELEN(bp)	Blinelen(bp)
 #define	BFILDES(bp)	Bfildes(bp)
 
-int	Bbuffered(Biobufhdr*);
-int	Bfildes(Biobufhdr*);
-int	Bflush(Biobufhdr*);
-int	Bgetc(Biobufhdr*);
-int	Bgetd(Biobufhdr*, double*);
-long	Bgetrune(Biobufhdr*);
+int	Bbuffered(Biobuf*);
+int	Bfildes(Biobuf*);
+int	Bflush(Biobuf*);
+int	Bgetc(Biobuf*);
+int	Bgetd(Biobuf*, double*);
+long	Bgetrune(Biobuf*);
 int	Binit(Biobuf*, int, int);
-int	Binits(Biobufhdr*, int, int, uchar*, int);
-int	Blinelen(Biobufhdr*);
-vlong	Boffset(Biobufhdr*);
+int	Binits(Biobuf*, int, int, uchar*, int);
+int	Blinelen(Biobuf*);
+vlong	Boffset(Biobuf*);
 Biobuf*	Bopen(char*, int);
-int	Bprint(Biobufhdr*, char*, ...);
-int	Bvprint(Biobufhdr*, char*, va_list);
-int	Bputc(Biobufhdr*, int);
-int	Bputrune(Biobufhdr*, long);
-void*	Brdline(Biobufhdr*, int);
-char*	Brdstr(Biobufhdr*, int, int);
-long	Bread(Biobufhdr*, void*, long);
-vlong	Bseek(Biobufhdr*, vlong, int);
-int	Bterm(Biobufhdr*);
-int	Bungetc(Biobufhdr*);
-int	Bungetrune(Biobufhdr*);
-long	Bwrite(Biobufhdr*, void*, long);
+int	Bprint(Biobuf*, char*, ...);
+int	Bvprint(Biobuf*, char*, va_list);
+int	Bputc(Biobuf*, int);
+int	Bputrune(Biobuf*, long);
+void*	Brdline(Biobuf*, int);
+char*	Brdstr(Biobuf*, int, int);
+long	Bread(Biobuf*, void*, long);
+vlong	Bseek(Biobuf*, vlong, int);
+int	Bterm(Biobuf*);
+int	Bungetc(Biobuf*);
+int	Bungetrune(Biobuf*);
+long	Bwrite(Biobuf*, void*, long);
 
 #pragma	varargck	argpos	Bprint	2
+#endif

@@ -1,8 +1,6 @@
-#pragma	src	"/sys/src/libc/9sys"
-#pragma	lib	"libc.a"
-
+#ifndef _FCALL_H /* guard needed for single file compilation of cmd */
+#define _FCALL_H
 #define	VERSION9P	"9P2000"
-
 #define	MAXWELEM	16
 
 typedef
@@ -11,59 +9,59 @@ struct	Fcall
 	uchar	type;
 	u32int	fid;
 	ushort	tag;
-	union {
-		struct {
+	/* union { */
+		/* struct { */
 			u32int	msize;		/* Tversion, Rversion */
 			char	*version;	/* Tversion, Rversion */
-		};
-		struct {
+		/* }; */
+		/* struct { */
 			ushort	oldtag;		/* Tflush */
-		};
-		struct {
+		/* }; */
+		/* struct { */
 			char	*ename;		/* Rerror */
-		};
-		struct {
+		/* }; */
+		/* struct { */
 			Qid	qid;		/* Rattach, Ropen, Rcreate */
 			u32int	iounit;		/* Ropen, Rcreate */
-		};
-		struct {
+		/* }; */
+		/* struct { */
 			Qid	aqid;		/* Rauth */
-		};
-		struct {
+		/* }; */
+		/* struct { */
 			u32int	afid;		/* Tauth, Tattach */
 			char	*uname;		/* Tauth, Tattach */
 			char	*aname;		/* Tauth, Tattach */
-		};
-		struct {
+		/* }; */
+		/* struct { */
 			u32int	perm;		/* Tcreate */ 
 			char	*name;		/* Tcreate */
 			uchar	mode;		/* Tcreate, Topen */
-		};
-		struct {
+		/* }; */
+		/* struct { */
 			u32int	newfid;		/* Twalk */
 			ushort	nwname;		/* Twalk */
 			char	*wname[MAXWELEM];	/* Twalk */
-		};
-		struct {
+		/* }; */
+		/* struct { */
 			ushort	nwqid;		/* Rwalk */
 			Qid	wqid[MAXWELEM];		/* Rwalk */
-		};
-		struct {
+		/* }; */
+		/* struct { */
 			vlong	offset;		/* Tread, Twrite */
 			u32int	count;		/* Tread, Twrite, Rread */
 			char	*data;		/* Twrite, Rread */
-		};
-		struct {
+		/* }; */
+		/* struct { */
 			ushort	nstat;		/* Twstat, Rstat */
 			uchar	*stat;		/* Twstat, Rstat */
-		};
-	};
+		/* }; */
+	/* }; */
 } Fcall;
 
 
 #define	GBIT8(p)	((p)[0])
 #define	GBIT16(p)	((p)[0]|((p)[1]<<8))
-#define	GBIT32(p)	((p)[0]|((p)[1]<<8)|((p)[2]<<16)|((p)[3]<<24))
+#define	GBIT32(p)	((u32int)((p)[0]|((p)[1]<<8)|((p)[2]<<16)|((p)[3]<<24)))
 #define	GBIT64(p)	((u32int)((p)[0]|((p)[1]<<8)|((p)[2]<<16)|((p)[3]<<24)) |\
 				((vlong)((p)[4]|((p)[5]<<8)|((p)[6]<<16)|((p)[7]<<24)) << 32))
 
@@ -73,25 +71,25 @@ struct	Fcall
 #define	PBIT64(p,v)	(p)[0]=(v);(p)[1]=(v)>>8;(p)[2]=(v)>>16;(p)[3]=(v)>>24;\
 			(p)[4]=(v)>>32;(p)[5]=(v)>>40;(p)[6]=(v)>>48;(p)[7]=(v)>>56
 
-#define	BIT8SZ		1
-#define	BIT16SZ		2
-#define	BIT32SZ		4
-#define	BIT64SZ		8
-#define	QIDSZ	(BIT8SZ+BIT32SZ+BIT64SZ)
+#define  BIT8SZ    1
+#define  BIT16SZ    2
+#define  BIT32SZ    4
+#define  BIT64SZ    8
+#define  QIDSZ  (BIT8SZ+BIT32SZ+BIT64SZ)
 
 /* STATFIXLEN includes leading 16-bit count */
 /* The count, however, excludes itself; total size is BIT16SZ+count */
-#define STATFIXLEN	(BIT16SZ+QIDSZ+5*BIT16SZ+4*BIT32SZ+1*BIT64SZ)	/* amount of fixed length data in a stat buffer */
+#define STATFIXLEN  (BIT16SZ+QIDSZ+5*BIT16SZ+4*BIT32SZ+1*BIT64SZ)  /* amount of fixed length data in a stat buffer */
 
-#define	NOTAG		(ushort)~0U	/* Dummy tag */
-#define	NOFID		(u32int)~0U	/* Dummy fid */
-#define	IOHDRSZ		24	/* ample room for Twrite/Rread header (iounit) */
+#define  NOTAG    (ushort)~0U  /* Dummy tag */
+#define  NOFID    (u32int)~0U  /* Dummy fid */
+#define  IOHDRSZ    24  /* ample room for Twrite/Rread header (iounit) */
 
 enum
 {
 	Tversion =	100,
 	Rversion,
-	Tauth =		102,
+	Tauth =	102,
 	Rauth,
 	Tattach =	104,
 	Rattach,
@@ -138,3 +136,4 @@ int	read9pmsg(int, void*, uint);
 #pragma	varargck	type	"F"	Fcall*
 #pragma	varargck	type	"M"	ulong
 #pragma	varargck	type	"D"	Dir*
+#endif

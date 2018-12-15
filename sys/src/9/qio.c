@@ -1,30 +1,16 @@
-#include	"u.h"
-#include	"../port/lib.h"
-#include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
-#include	"../port/error.h"
+#include	"error.h"
 
-static ulong padblockcnt;
-static ulong concatblockcnt;
-static ulong pullupblockcnt;
-static ulong copyblockcnt;
-static ulong consumecnt;
-static ulong producecnt;
-static ulong qcopycnt;
-
-static int debugging;
-
-#define QDEBUG	if(0)
+#define QDEBUG if(0)
 
 /*
  *  IO queues
  */
-typedef struct Queue	Queue;
 
 struct Queue
 {
-	Lock;
+	Lock	l;
 
 	Block*	bfirst;		/* buffer */
 	Block*	blast;
@@ -47,27 +33,57 @@ struct Queue
 	Rendez	wr;		/* process waiting to write */
 
 	char	err[ERRMAX];
+	int	want;
 };
 
 enum
 {
-	Maxatomic	= 64*1024,
+	Maxatomic	= 32*1024
 };
 
 uint	qiomaxatomic = Maxatomic;
 
 void
-ixsummary(void)
+checkb(Block *b, char *msg)
 {
-	debugging ^= 1;
-	iallocsummary();
-	print("pad %lud, concat %lud, pullup %lud, copy %lud\n",
-		padblockcnt, concatblockcnt, pullupblockcnt, copyblockcnt);
-	print("consume %lud, produce %lud, qcopy %lud\n",
-		consumecnt, producecnt, qcopycnt);
+	if(b->base > b->lim)
+		panic("checkb 0 %s %lux %lux", msg, b->base, b->lim);
+	if(b->rp < b->base)
+		panic("checkb 1 %s %lux %lux", msg, b->base, b->rp);
+	if(b->wp < b->base)
+		panic("checkb 2 %s %lux %lux", msg, b->base, b->wp);
+	if(b->rp > b->lim)
+		panic("checkb 3 %s %lux %lux", msg, b->rp, b->lim);
+	if(b->wp > b->lim)
+		panic("checkb 4 %s %lux %lux", msg, b->wp, b->lim);
 }
 
-/*
+void
+freeb(Block *b)
+{
+	if(b == nil)
+		return;
+
+	/*
+	 * drivers which perform non cache coherent DMA manage their own buffer 
+	 * pool of uncached buffers and provide their own free routine.
+	 */
+	if(b->free) {
+		b->free(b);
+		return;
+	}
+
+	/* poison the block in case someone is still holding onto it */
+	b->next = (void*)0xdeadbabe;
+	b->rp = (void*)0xdeadbabe;
+	b->wp = (void*)0xdeadbabe;
+	b->lim = (void*)0xdeadbabe;
+	b->base = (void*)0xdeadbabe;
+
+	free(b);
+}
+
+/* 
  *  free a list of blocks
  */
 void
@@ -77,11 +93,12 @@ freeblist(Block *b)
 
 	for(; b != 0; b = next){
 		next = b->next;
-		if(b->ref == 1)
-			b->next = nil;
+		b->next = 0;
 		freeb(b);
 	}
 }
+
+ulong padblockoverhead;
 
 /*
  *  pad a block to the front (or the back if size is negative)
@@ -92,7 +109,6 @@ padblock(Block *bp, int size)
 	int n;
 	Block *nbp;
 
-	QDEBUG checkb(bp, "padblock 1");
 	if(size >= 0){
 		if(bp->rp - bp->base >= size){
 			bp->rp -= size;
@@ -100,9 +116,9 @@ padblock(Block *bp, int size)
 		}
 
 		if(bp->next)
-			panic("padblock %#p", getcallerpc(&bp));
+			panic("padblock 0x%luX", getcallerpc(&bp));
 		n = BLEN(bp);
-		padblockcnt++;
+		padblockoverhead += n;
 		nbp = allocb(size+n);
 		nbp->rp += size;
 		nbp->wp = nbp->rp;
@@ -114,19 +130,18 @@ padblock(Block *bp, int size)
 		size = -size;
 
 		if(bp->next)
-			panic("padblock %#p", getcallerpc(&bp));
+			panic("padblock 0x%luX", getcallerpc(&bp));
 
 		if(bp->lim - bp->wp >= size)
 			return bp;
 
 		n = BLEN(bp);
-		padblockcnt++;
+		padblockoverhead += n;
 		nbp = allocb(size+n);
 		memmove(nbp->wp, bp->rp, n);
 		nbp->wp += n;
 		freeb(bp);
 	}
-	QDEBUG checkb(nbp, "padblock 1");
 	return nbp;
 }
 
@@ -181,14 +196,14 @@ concatblock(Block *bp)
 		memmove(nb->wp, f->rp, len);
 		nb->wp += len;
 	}
-	concatblockcnt += BLEN(nb);
 	freeblist(bp);
-	QDEBUG checkb(nb, "concatblock 1");
 	return nb;
 }
 
 /*
- *  make sure the first block has at least n bytes
+ *  make sure the first block has at least n bytes.  If we started with
+ *  less than n bytes, make sure we have exactly n bytes.  devssl.c depends
+ *  on this.
  */
 Block*
 pullupblock(Block *bp, int n)
@@ -197,7 +212,7 @@ pullupblock(Block *bp, int n)
 	Block *nbp;
 
 	/*
-	 *  this should almost always be true, it's
+	 *  this should almost always be true, the rest it
 	 *  just to avoid every caller checking.
 	 */
 	if(BLEN(bp) >= n)
@@ -221,32 +236,22 @@ pullupblock(Block *bp, int n)
 		i = BLEN(nbp);
 		if(i > n) {
 			memmove(bp->wp, nbp->rp, n);
-			pullupblockcnt++;
 			bp->wp += n;
 			nbp->rp += n;
-			QDEBUG checkb(bp, "pullupblock 1");
 			return bp;
-		} else {
-			/* shouldn't happen but why crash if it does */
-			if(i < 0){
-				print("pullup negative length packet, called from %#p\n",
-					getcallerpc(&bp));
-				i = 0;
-			}
+		}
+		else {
 			memmove(bp->wp, nbp->rp, i);
-			pullupblockcnt++;
 			bp->wp += i;
 			bp->next = nbp->next;
 			nbp->next = 0;
 			freeb(nbp);
 			n -= i;
-			if(n == 0){
-				QDEBUG checkb(bp, "pullupblock 2");
+			if(n == 0)
 				return bp;
-			}
 		}
 	}
-	freeb(bp);
+	freeblist(bp);
 	return 0;
 }
 
@@ -276,7 +281,6 @@ trimblock(Block *bp, int offset, int len)
 	ulong l;
 	Block *nb, *startb;
 
-	QDEBUG checkb(bp, "trimblock 1");
 	if(blocklen(bp) < offset+len) {
 		freeblist(bp);
 		return nil;
@@ -317,7 +321,6 @@ copyblock(Block *bp, int count)
 	int l;
 	Block *nbp;
 
-	QDEBUG checkb(bp, "copyblock 0");
 	nbp = allocb(count);
 	for(; count > 0 && bp != 0; bp = bp->next){
 		l = BLEN(bp);
@@ -331,8 +334,6 @@ copyblock(Block *bp, int count)
 		memset(nbp->wp, 0, count);
 		nbp->wp += count;
 	}
-	copyblockcnt++;
-	QDEBUG checkb(nbp, "copyblock 1");
 
 	return nbp;
 }
@@ -365,7 +366,6 @@ adjustblock(Block* bp, int len)
 	return bp;
 }
 
-
 /*
  *  throw away up to count bytes from a
  *  list of blocks.  Return count of bytes
@@ -389,7 +389,6 @@ pullblock(Block **bph, int count)
 		bytes += n;
 		count -= n;
 		bp->rp += n;
-		QDEBUG checkb(bp, "pullblock ");
 		if(BLEN(bp) == 0) {
 			*bph = bp->next;
 			bp->next = nil;
@@ -398,6 +397,45 @@ pullblock(Block **bph, int count)
 	}
 	return bytes;
 }
+
+/*
+ *  allocate queues and blocks (round data base address to 64 bit boundary)
+ */
+Block*
+iallocb(int size)
+{
+	Block *b;
+	ulong addr;
+
+	b = kmalloc(sizeof(Block)+size);
+	if(b == 0)
+		return 0;
+	memset(b, 0, sizeof(Block));
+
+	addr = (ulong)b + sizeof(Block);
+	b->base = (uchar*)addr;
+	b->lim = b->base + size;
+	b->rp = b->base;
+	b->wp = b->rp;
+
+	return b;
+}
+
+
+/*
+  *  call error if iallocb fails
+ */
+Block*
+allocb(int size)
+{
+	Block *b;
+
+	b = iallocb(size);
+	if(b == 0)
+		exhausted("allocb");
+	return b;
+}
+	
 
 /*
  *  get next block from a queue, return null if nothing there
@@ -409,13 +447,13 @@ qget(Queue *q)
 	Block *b;
 
 	/* sync with qwrite */
-	ilock(q);
+	lock(&q->l);
 
 	b = q->bfirst;
-	if(b == nil){
+	if(b == 0){
 		q->state |= Qstarve;
-		iunlock(q);
-		return nil;
+		unlock(&q->l);
+		return 0;
 	}
 	q->bfirst = b->next;
 	b->next = 0;
@@ -430,10 +468,10 @@ qget(Queue *q)
 	} else
 		dowakeup = 0;
 
-	iunlock(q);
+	unlock(&q->l);
 
 	if(dowakeup)
-		wakeup(&q->wr);
+		Wakeup(&q->wr);
 
 	return b;
 }
@@ -447,7 +485,7 @@ qdiscard(Queue *q, int len)
 	Block *b;
 	int dowakeup, n, sofar;
 
-	ilock(q);
+	lock(&q->l);
 	for(sofar = 0; sofar < len; sofar += n){
 		b = q->bfirst;
 		if(b == nil)
@@ -467,26 +505,17 @@ qdiscard(Queue *q, int len)
 		}
 	}
 
-	/*
-	 *  if writer flow controlled, restart
-	 *
-	 *  This used to be
-	 *	q->len < q->limit/2
-	 *  but it slows down tcp too much for certain write sizes.
-	 *  I really don't understand it completely.  It may be
-	 *  due to the queue draining so fast that the transmission
-	 *  stalls waiting for the app to produce more data.  - presotto
-	 */
+	/* if writer flow controlled, restart */
 	if((q->state & Qflow) && q->len < q->limit){
 		q->state &= ~Qflow;
 		dowakeup = 1;
 	} else
 		dowakeup = 0;
 
-	iunlock(q);
+	unlock(&q->l);
 
 	if(dowakeup)
-		wakeup(&q->wr);
+		Wakeup(&q->wr);
 
 	return sofar;
 }
@@ -503,13 +532,13 @@ qconsume(Queue *q, void *vp, int len)
 	Block *tofree = nil;
 
 	/* sync with qwrite */
-	ilock(q);
+	lock(&q->l);
 
 	for(;;) {
 		b = q->bfirst;
 		if(b == 0){
 			q->state |= Qstarve;
-			iunlock(q);
+			unlock(&q->l);
 			return -1;
 		}
 		QDEBUG checkb(b, "qconsume 1");
@@ -523,18 +552,18 @@ qconsume(Queue *q, void *vp, int len)
 		/* remember to free this */
 		b->next = tofree;
 		tofree = b;
-	};
+	}
 
 	if(n < len)
 		len = n;
 	memmove(p, b->rp, len);
-	consumecnt += n;
+	if((q->state & Qmsg) || len == n)
+		q->bfirst = b->next;
 	b->rp += len;
 	q->dlen -= len;
 
 	/* discard the block if we're done with it */
 	if((q->state & Qmsg) || len == n){
-		q->bfirst = b->next;
 		b->next = 0;
 		q->len -= BALLOC(b);
 		q->dlen -= BLEN(b);
@@ -551,10 +580,10 @@ qconsume(Queue *q, void *vp, int len)
 	} else
 		dowakeup = 0;
 
-	iunlock(q);
+	unlock(&q->l);
 
 	if(dowakeup)
-		wakeup(&q->wr);
+		Wakeup(&q->wr);
 
 	if(tofree != nil)
 		freeblist(tofree);
@@ -569,16 +598,16 @@ qpass(Queue *q, Block *b)
 
 	/* sync with qread */
 	dowakeup = 0;
-	ilock(q);
+	lock(&q->l);
 	if(q->len >= q->limit){
+		unlock(&q->l);
 		freeblist(b);
-		iunlock(q);
 		return -1;
 	}
 	if(q->state & Qclosed){
-		len = BALLOC(b);
+		unlock(&q->l);
+		len = blocklen(b);
 		freeblist(b);
-		iunlock(q);
 		return len;
 	}
 
@@ -607,10 +636,10 @@ qpass(Queue *q, Block *b)
 		q->state &= ~Qstarve;
 		dowakeup = 1;
 	}
-	iunlock(q);
+	unlock(&q->l);
 
 	if(dowakeup)
-		wakeup(&q->rr);
+		Wakeup(&q->rr);
 
 	return len;
 }
@@ -622,12 +651,13 @@ qpassnolim(Queue *q, Block *b)
 
 	/* sync with qread */
 	dowakeup = 0;
-	ilock(q);
+	lock(&q->l);
 
+	len = BALLOC(b);
 	if(q->state & Qclosed){
+		unlock(&q->l);
 		freeblist(b);
-		iunlock(q);
-		return BALLOC(b);
+		return len;
 	}
 
 	/* add buffer to queue */
@@ -635,7 +665,6 @@ qpassnolim(Queue *q, Block *b)
 		q->blast->next = b;
 	else
 		q->bfirst = b;
-	len = BALLOC(b);
 	dlen = BLEN(b);
 	QDEBUG checkb(b, "qpass");
 	while(b->next){
@@ -655,10 +684,10 @@ qpassnolim(Queue *q, Block *b)
 		q->state &= ~Qstarve;
 		dowakeup = 1;
 	}
-	iunlock(q);
+	unlock(&q->l);
 
 	if(dowakeup)
-		wakeup(&q->rr);
+		Wakeup(&q->rr);
 
 	return len;
 }
@@ -697,30 +726,35 @@ qproduce(Queue *q, void *vp, int len)
 
 	/* sync with qread */
 	dowakeup = 0;
-	ilock(q);
+	lock(&q->l);
+
+	if(q->state & Qclosed){
+		unlock(&q->l);
+		return -1;
+	}
 
 	/* no waiting receivers, room in buffer? */
 	if(q->len >= q->limit){
 		q->state |= Qflow;
-		iunlock(q);
+		unlock(&q->l);
 		return -1;
 	}
 
 	/* save in buffer */
 	b = iallocb(len);
 	if(b == 0){
-		iunlock(q);
-		return 0;
+		unlock(&q->l);
+		print("qproduce: iallocb failed\n");
+		return -1;
 	}
 	memmove(b->wp, p, len);
-	producecnt += len;
 	b->wp += len;
 	if(q->bfirst)
 		q->blast->next = b;
 	else
 		q->bfirst = b;
 	q->blast = b;
-	/* b->next = 0; done by iallocb() */
+	/* b->next = 0; done by allocb() */
 	q->len += BALLOC(b);
 	q->dlen += BLEN(b);
 	QDEBUG checkb(b, "qproduce");
@@ -732,10 +766,11 @@ qproduce(Queue *q, void *vp, int len)
 
 	if(q->len >= q->limit)
 		q->state |= Qflow;
-	iunlock(q);
+	unlock(&q->l);
+
 
 	if(dowakeup)
-		wakeup(&q->rr);
+		Wakeup(&q->rr);
 
 	return len;
 }
@@ -753,13 +788,13 @@ qcopy(Queue *q, int len, ulong offset)
 
 	nb = allocb(len);
 
-	ilock(q);
+	lock(&q->l);
 
 	/* go to offset */
 	b = q->bfirst;
 	for(sofar = 0; ; sofar += n){
 		if(b == nil){
-			iunlock(q);
+			unlock(&q->l);
 			return nb;
 		}
 		n = BLEN(b);
@@ -768,7 +803,6 @@ qcopy(Queue *q, int len, ulong offset)
 			n -= offset - sofar;
 			break;
 		}
-		QDEBUG checkb(b, "qcopy");
 		b = b->next;
 	}
 
@@ -777,7 +811,6 @@ qcopy(Queue *q, int len, ulong offset)
 		if(n > len - sofar)
 			n = len - sofar;
 		memmove(nb->wp, p, n);
-		qcopycnt += n;
 		sofar += n;
 		nb->wp += n;
 		b = b->next;
@@ -786,7 +819,7 @@ qcopy(Queue *q, int len, ulong offset)
 		n = BLEN(b);
 		p = b->rp;
 	}
-	iunlock(q);
+	unlock(&q->l);
 
 	return nb;
 }
@@ -799,7 +832,7 @@ qopen(int limit, int msg, void (*kick)(void*), void *arg)
 {
 	Queue *q;
 
-	q = malloc(sizeof(Queue));
+	q = kmalloc(sizeof(Queue));
 	if(q == 0)
 		return 0;
 
@@ -807,7 +840,6 @@ qopen(int limit, int msg, void (*kick)(void*), void *arg)
 	q->kick = kick;
 	q->arg = arg;
 	q->state = msg;
-	
 	q->state |= Qstarve;
 	q->eof = 0;
 	q->noblock = 0;
@@ -862,9 +894,9 @@ qwait(Queue *q)
 		}
 
 		q->state |= Qstarve;	/* flag requesting producer to wake me */
-		iunlock(q);
-		sleep(&q->rr, notempty, q);
-		ilock(q);
+		unlock(&q->l);
+		Sleep(&q->rr, notempty, q);
+		lock(&q->l);
 	}
 	return 1;
 }
@@ -888,7 +920,7 @@ qaddlist(Queue *q, Block *b)
 }
 
 /*
- *  called with q ilocked
+ *  called with q locked
  */
 Block*
 qremove(Queue *q)
@@ -985,10 +1017,10 @@ qputback(Queue *q, Block *b)
 
 /*
  *  flow control, get producer going again
- *  called with q ilocked
+ *  called with q locked
  */
 static void
-qwakeup_iunlock(Queue *q)
+qwakeup_unlock(Queue *q)
 {
 	int dowakeup = 0;
 
@@ -998,13 +1030,13 @@ qwakeup_iunlock(Queue *q)
 		dowakeup = 1;
 	}
 
-	iunlock(q);
+	unlock(&q->l);
 
 	/* wakeup flow controlled writers */
 	if(dowakeup){
 		if(q->kick)
 			q->kick(q->arg);
-		wakeup(&q->wr);
+		Wakeup(&q->wr);
 	}
 }
 
@@ -1023,17 +1055,17 @@ qbread(Queue *q, int len)
 		nexterror();
 	}
 
-	ilock(q);
+	lock(&q->l);
 	switch(qwait(q)){
 	case 0:
 		/* queue closed */
-		iunlock(q);
-		qunlock(&q->rlock);
+		unlock(&q->l);
 		poperror();
+		qunlock(&q->rlock);
 		return nil;
 	case -1:
 		/* multiple reads on a closed queue */
-		iunlock(q);
+		unlock(&q->l);
 		error(q->err);
 	}
 
@@ -1041,7 +1073,7 @@ qbread(Queue *q, int len)
 	b = qremove(q);
 	n = BLEN(b);
 
-	/* split block if it's too big and this is not a message queue */
+	/* split block if it's too big and this is not a message oriented queue */
 	nb = b;
 	if(n > len){
 		if((q->state&Qmsg) == 0){
@@ -1055,7 +1087,7 @@ qbread(Queue *q, int len)
 	}
 
 	/* restart producer */
-	qwakeup_iunlock(q);
+	qwakeup_unlock(q);
 
 	poperror();
 	qunlock(&q->rlock);
@@ -1063,8 +1095,7 @@ qbread(Queue *q, int len)
 }
 
 /*
- *  read a queue.  if no data is queued, post a Block
- *  and wait on its Rendez.
+ *  read a queue.  if no data is queued, wait on its Rendez
  */
 long
 qread(Queue *q, void *vp, int len)
@@ -1078,18 +1109,18 @@ qread(Queue *q, void *vp, int len)
 		nexterror();
 	}
 
-	ilock(q);
+	lock(&q->l);
 again:
 	switch(qwait(q)){
 	case 0:
 		/* queue closed */
-		iunlock(q);
-		qunlock(&q->rlock);
+		unlock(&q->l);
 		poperror();
+		qunlock(&q->rlock);
 		return 0;
 	case -1:
 		/* multiple reads on a closed queue */
-		iunlock(q);
+		unlock(&q->l);
 		error(q->err);
 	}
 
@@ -1127,9 +1158,9 @@ again:
 	}
 
 	/* copy to user space outside of the ilock */
-	iunlock(q);
+	unlock(&q->l);
 	b = bl2mem(vp, first, len);
-	ilock(q);
+	lock(&q->l);
 
 	/* take care of any left over partial block */
 	if(b != nil){
@@ -1141,7 +1172,7 @@ again:
 	}
 
 	/* restart producer */
-	qwakeup_iunlock(q);
+	qwakeup_unlock(q);
 
 	poperror();
 	qunlock(&q->rlock);
@@ -1156,8 +1187,6 @@ qnotfull(void *a)
 	return q->len < q->limit || (q->state & Qclosed);
 }
 
-ulong noblockcnt;
-
 /*
  *  add a block to a queue obeying flow control
  */
@@ -1165,40 +1194,39 @@ long
 qbwrite(Queue *q, Block *b)
 {
 	int n, dowakeup;
-	Proc *p;
+	volatile struct {Block *b;} cb;
 
+	dowakeup = 0;
 	n = BLEN(b);
-
 	if(q->bypass){
 		(*q->bypass)(q->arg, b);
 		return n;
 	}
+	cb.b = b;
 
-	dowakeup = 0;
 	qlock(&q->wlock);
 	if(waserror()){
-		if(b != nil)
-			freeb(b);
+		if(cb.b != nil)
+			freeb(cb.b);
 		qunlock(&q->wlock);
 		nexterror();
 	}
 
-	ilock(q);
+	lock(&q->l);
 
 	/* give up if the queue is closed */
 	if(q->state & Qclosed){
-		iunlock(q);
+		unlock(&q->l);
 		error(q->err);
 	}
 
 	/* if nonblocking, don't queue over the limit */
 	if(q->len >= q->limit){
 		if(q->noblock){
-			iunlock(q);
+			unlock(&q->l);
 			freeb(b);
-			noblockcnt += n;
-			qunlock(&q->wlock);
 			poperror();
+			qunlock(&q->wlock);
 			return n;
 		}
 	}
@@ -1213,27 +1241,21 @@ qbwrite(Queue *q, Block *b)
 	q->len += BALLOC(b);
 	q->dlen += n;
 	QDEBUG checkb(b, "qbwrite");
-	b = nil;
+	cb.b = nil;
 
-	/* make sure other end gets awakened */
 	if(q->state & Qstarve){
 		q->state &= ~Qstarve;
 		dowakeup = 1;
 	}
-	iunlock(q);
+
+	unlock(&q->l);
 
 	/*  get output going again */
 	if(q->kick && (dowakeup || (q->state&Qkick)))
 		q->kick(q->arg);
 
-	/* wakeup anyone consuming at the other end */
-	if(dowakeup){
-		p = wakeup(&q->rr);
-
-		/* if we just wokeup a higher priority process, let it run */
-		if(p != nil && p->priority > up->priority)
-			sched();
-	}
+	if(dowakeup)
+		Wakeup(&q->rr);
 
 	/*
 	 *  flow control, wait for queue to get below the limit
@@ -1251,12 +1273,11 @@ qbwrite(Queue *q, Block *b)
 		if(q->noblock || qnotfull(q))
 			break;
 
-		ilock(q);
+		lock(&q->l);
 		q->state |= Qflow;
-		iunlock(q);
-		sleep(&q->wr, qnotfull, q);
+		unlock(&q->l);
+		Sleep(&q->wr, qnotfull, q);
 	}
-	USED(b);
 
 	qunlock(&q->wlock);
 	poperror();
@@ -1273,9 +1294,6 @@ qwrite(Queue *q, void *vp, int len)
 	Block *b;
 	uchar *p = vp;
 
-	QDEBUG if(!islo())
-		print("qwrite hi %#p\n", getcallerpc(&q));
-
 	sofar = 0;
 	do {
 		n = len-sofar;
@@ -1283,7 +1301,7 @@ qwrite(Queue *q, void *vp, int len)
 			n = Maxatomic;
 
 		b = allocb(n);
-		setmalloctag(b, (up->text[0]<<24)|(up->text[1]<<16)|(up->text[2]<<8)|up->text[3]);
+		setmalloctag(b, getcallerpc(&q));
 		if(waserror()){
 			freeb(b);
 			nexterror();
@@ -1303,9 +1321,6 @@ qwrite(Queue *q, void *vp, int len)
 /*
  *  used by print() to write to a queue.  Since we may be splhi or not in
  *  a process, don't qlock.
- *
- *  this routine merges adjacent blocks if block n+1 will fit into
- *  the free space of block n.
  */
 int
 qiwrite(Queue *q, void *vp, int len)
@@ -1323,21 +1338,14 @@ qiwrite(Queue *q, void *vp, int len)
 			n = Maxatomic;
 
 		b = iallocb(n);
-		if(b == nil)
+		if (b == 0) {
+			print("qiwrite: iallocb failed\n");
 			break;
+		}
 		memmove(b->wp, p+sofar, n);
 		b->wp += n;
 
-		ilock(q);
-
-		/* we use an artificially high limit for kernel prints since anything
-		 * over the limit gets dropped
-		 */
-		if(q->dlen >= 16*1024){
-			iunlock(q);
-			freeb(b);
-			break;
-		}
+		lock(&q->l);
 
 		QDEBUG checkb(b, "qiwrite");
 		if(q->bfirst)
@@ -1353,12 +1361,12 @@ qiwrite(Queue *q, void *vp, int len)
 			dowakeup = 1;
 		}
 
-		iunlock(q);
+		unlock(&q->l);
 
 		if(dowakeup){
 			if(q->kick)
 				q->kick(q->arg);
-			wakeup(&q->rr);
+			Wakeup(&q->rr);
 		}
 
 		sofar += n;
@@ -1391,7 +1399,7 @@ qclose(Queue *q)
 		return;
 
 	/* mark it */
-	ilock(q);
+	lock(&q->l);
 	q->state |= Qclosed;
 	q->state &= ~(Qflow|Qstarve);
 	strcpy(q->err, Ehungup);
@@ -1400,14 +1408,14 @@ qclose(Queue *q)
 	q->len = 0;
 	q->dlen = 0;
 	q->noblock = 0;
-	iunlock(q);
+	unlock(&q->l);
 
 	/* free queued blocks */
 	freeblist(bfirst);
 
 	/* wake up readers/writers */
-	wakeup(&q->rr);
-	wakeup(&q->wr);
+	Wakeup(&q->rr);
+	Wakeup(&q->wr);
 }
 
 /*
@@ -1418,17 +1426,17 @@ void
 qhangup(Queue *q, char *msg)
 {
 	/* mark it */
-	ilock(q);
+	lock(&q->l);
 	q->state |= Qclosed;
 	if(msg == 0 || *msg == 0)
 		strcpy(q->err, Ehungup);
 	else
-		strncpy(q->err, msg, ERRMAX-1);
-	iunlock(q);
+		kstrcpy(q->err, msg, sizeof q->err);
+	unlock(&q->l);
 
 	/* wake up readers/writers */
-	wakeup(&q->rr);
-	wakeup(&q->wr);
+	Wakeup(&q->rr);
+	Wakeup(&q->wr);
 }
 
 /*
@@ -1446,12 +1454,12 @@ qisclosed(Queue *q)
 void
 qreopen(Queue *q)
 {
-	ilock(q);
+	lock(&q->l);
 	q->state &= ~Qclosed;
 	q->state |= Qstarve;
 	q->eof = 0;
 	q->limit = q->inilim;
-	iunlock(q);
+	unlock(&q->l);
 }
 
 /*
@@ -1513,18 +1521,18 @@ qflush(Queue *q)
 	Block *bfirst;
 
 	/* mark it */
-	ilock(q);
+	lock(&q->l);
 	bfirst = q->bfirst;
 	q->bfirst = 0;
 	q->len = 0;
 	q->dlen = 0;
-	iunlock(q);
+	unlock(&q->l);
 
 	/* free queued blocks */
 	freeblist(bfirst);
 
 	/* wake up readers/writers */
-	wakeup(&q->wr);
+	Wakeup(&q->wr);
 }
 
 int
@@ -1537,4 +1545,10 @@ int
 qstate(Queue *q)
 {
 	return q->state;
+}
+
+int
+qclosed(Queue *q)
+{
+	return q->state & Qclosed;
 }

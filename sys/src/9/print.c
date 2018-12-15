@@ -1,6 +1,3 @@
-#include "u.h"
-#include "../port/lib.h"
-#include "mem.h"
 #include "dat.h"
 #include "fns.h"
 
@@ -19,7 +16,8 @@ _fmtunlock(void)
 }
 
 int
-_efgfmt(Fmt*)
+_efgfmt(Fmt *f)
 {
+	USED(f);
 	return -1;
 }

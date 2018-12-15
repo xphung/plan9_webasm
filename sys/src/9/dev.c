@@ -1,9 +1,6 @@
-#include	"u.h"
-#include	"../port/lib.h"
-#include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
-#include	"../port/error.h"
+#include	"error.h"
 
 extern ulong	kerndate;
 
@@ -25,13 +22,13 @@ devno(int c, int user)
 			return i;
 	}
 	if(user == 0)
-		panic("devno %C %#ux", c, c);
+		panic("devno %C 0x%ux", c, c);
 
 	return -1;
 }
 
 void
-devdir(Chan *c, Qid qid, char *n, vlong length, char *user, long perm, Dir *db)
+devdir(Chan *c, Qid qid, char *n, long length, char *user, long perm, Dir *db)
 {
 	db->name = n;
 	if(c->flag&CMSG)
@@ -39,9 +36,8 @@ devdir(Chan *c, Qid qid, char *n, vlong length, char *user, long perm, Dir *db)
 	db->qid = qid;
 	db->type = devtab[c->type]->dc;
 	db->dev = c->dev;
-	db->mode = perm;
-	db->mode |= qid.type << 24;
-	db->atime = seconds();
+	db->mode = perm | (qid.type << 24);
+	db->atime = time(0);
 	db->mtime = kerndate;
 	db->length = length;
 	db->uid = user;
@@ -50,53 +46,15 @@ devdir(Chan *c, Qid qid, char *n, vlong length, char *user, long perm, Dir *db)
 }
 
 /*
- * (here, Devgen is the prototype; devgen is the function in dev.c.)
- * 
- * a Devgen is expected to return the directory entry for ".."
- * if you pass it s==DEVDOTDOT (-1).  otherwise...
- * 
- * there are two contradictory rules.
- * 
- * (i) if c is a directory, a Devgen is expected to list its children
- * as you iterate s.
- * 
- * (ii) whether or not c is a directory, a Devgen is expected to list
- * its siblings as you iterate s.
- * 
- * devgen always returns the list of children in the root
- * directory.  thus it follows (i) when c is the root and (ii) otherwise.
- * many other Devgens follow (i) when c is a directory and (ii) otherwise.
- * 
- * devwalk assumes (i).  it knows that devgen breaks (i)
- * for children that are themselves directories, and explicitly catches them.
- * 
- * devstat assumes (ii).  if the Devgen in question follows (i)
- * for this particular c, devstat will not find the necessary info.
- * with our particular Devgen functions, this happens only for
- * directories, so devstat makes something up, assuming
- * c->name, c->qid, eve, DMDIR|0555.
- * 
- * devdirread assumes (i).  the callers have to make sure
- * that the Devgen satisfies (i) for the chan being read.
- */
-/*
  * the zeroth element of the table MUST be the directory itself for ..
-*/
+ */
 int
 devgen(Chan *c, char *name, Dirtab *tab, int ntab, int i, Dir *dp)
 {
+	USED(name);
 	if(tab == 0)
 		return -1;
-	if(i == DEVDOTDOT){
-		/* nothing */
-	}else if(name){
-		for(i=1; i<ntab; i++)
-			if(strcmp(tab[i].name, name) == 0)
-				break;
-		if(i==ntab)
-			return -1;
-		tab += i;
-	}else{
+	if(i != DEVDOTDOT){
 		/* skip over the first element, that for . itself */
 		i++;
 		if(i >= ntab)
@@ -105,11 +63,6 @@ devgen(Chan *c, char *name, Dirtab *tab, int ntab, int i, Dir *dp)
 	}
 	devdir(c, tab->qid, tab->name, tab->length, eve, tab->perm, dp);
 	return 1;
-}
-
-void
-devreset(void)
-{
 }
 
 void
@@ -125,7 +78,6 @@ devshutdown(void)
 Chan*
 devattach(int tc, char *spec)
 {
-	int n;
 	Chan *c;
 	char *buf;
 
@@ -134,14 +86,12 @@ devattach(int tc, char *spec)
 	c->type = devno(tc, 0);
 	if(spec == nil)
 		spec = "";
-	n = 1+UTFmax+strlen(spec)+1;
-	buf = smalloc(n);
-	snprint(buf, n, "#%C%s", tc, spec);
-	c->path = newpath(buf);
+	buf = smalloc(4+strlen(spec)+1);
+	sprint(buf, "#%C%s", tc, spec);
+	c->name = newcname(buf);
 	free(buf);
 	return c;
 }
-
 
 Chan*
 devclone(Chan *c)
@@ -152,13 +102,13 @@ devclone(Chan *c)
 		panic("clone of open file type %C\n", devtab[c->type]->dc);
 
 	nc = newchan();
-
 	nc->type = c->type;
 	nc->dev = c->dev;
 	nc->mode = c->mode;
 	nc->qid = c->qid;
 	nc->offset = c->offset;
 	nc->umh = nil;
+	nc->mountid = c->mountid;
 	nc->aux = c->aux;
 	nc->mqid = c->mqid;
 	nc->mcp = c->mcp;
@@ -168,7 +118,8 @@ devclone(Chan *c)
 Walkqid*
 devwalk(Chan *c, Chan *nc, char **name, int nname, Dirtab *tab, int ntab, Devgen *gen)
 {
-	int i, j, alloc;
+	int i, j;
+	volatile int alloc;
 	Walkqid *wq;
 	char *n;
 	Dir dir;
@@ -204,11 +155,7 @@ devwalk(Chan *c, Chan *nc, char **name, int nname, Dirtab *tab, int ntab, Devgen
 			continue;
 		}
 		if(strcmp(n, "..") == 0){
-			if((*gen)(nc, nil, tab, ntab, DEVDOTDOT, &dir) != 1){
-				print("devgen walk .. in dev%s %llux broken\n",
-					devtab[nc->type]->name, nc->qid.path);
-				error("broken devgen");
-			}
+			(*gen)(nc, nil, tab, ntab, DEVDOTDOT, &dir);
 			nc->qid = dir.qid;
 			goto Accept;
 		}
@@ -228,7 +175,7 @@ devwalk(Chan *c, Chan *nc, char **name, int nname, Dirtab *tab, int ntab, Devgen
 			Notfound:
 				if(j == 0)
 					error(Enonexist);
-				kstrcpy(up->errstr, Enonexist, ERRMAX);
+				kstrcpy(up->env->errstr, Enonexist, ERRMAX);
 				goto Done;
 			case 0:
 				continue;
@@ -266,16 +213,16 @@ devstat(Chan *c, uchar *db, int n, Dirtab *tab, int ntab, Devgen *gen)
 	Dir dir;
 	char *p, *elem;
 
-	for(i=0;; i++){
+	for(i=0;; i++)
 		switch((*gen)(c, nil, tab, ntab, i, &dir)){
 		case -1:
 			if(c->qid.type & QTDIR){
-				if(c->path == nil)
+				if(c->name == nil)
 					elem = "???";
-				else if(strcmp(c->path->s, "/") == 0)
+				else if(strcmp(c->name->s, "/") == 0)
 					elem = "/";
 				else
-					for(elem=p=c->path->s; *p; p++)
+					for(elem=p=c->name->s; *p; p++)
 						if(*p == '/')
 							elem = p+1;
 				devdir(c, c->qid, elem, 0, eve, DMDIR|0555, &dir);
@@ -284,6 +231,9 @@ devstat(Chan *c, uchar *db, int n, Dirtab *tab, int ntab, Devgen *gen)
 					error(Ebadarg);
 				return n;
 			}
+			print("%s %s: devstat %C %llux\n",
+				up->text, up->env->user,
+				devtab[c->type]->dc, c->qid.path);
 
 			error(Enonexist);
 		case 0:
@@ -299,17 +249,19 @@ devstat(Chan *c, uchar *db, int n, Dirtab *tab, int ntab, Devgen *gen)
 			}
 			break;
 		}
-	}
 }
 
 long
 devdirread(Chan *c, char *d, long n, Dirtab *tab, int ntab, Devgen *gen)
 {
 	long m, dsz;
-	Dir dir;
+	struct{
+		Dir d;
+		char slop[100];	/* TO DO */
+	}dir;
 
 	for(m=0; m<n; c->dri++) {
-		switch((*gen)(c, nil, tab, ntab, c->dri, &dir)){
+		switch((*gen)(c, nil, tab, ntab, c->dri, &dir.d)){
 		case -1:
 			return m;
 
@@ -317,7 +269,7 @@ devdirread(Chan *c, char *d, long n, Dirtab *tab, int ntab, Devgen *gen)
 			break;
 
 		case 1:
-			dsz = convD2M(&dir, (uchar*)d, n-m);
+			dsz = convD2M(&dir.d, (uchar*)d, n-m);
 			if(dsz <= BIT16SZ){	/* <= not < because this isn't stat; read is stuck */
 				if(m == 0)
 					error(Eshort);
@@ -333,7 +285,7 @@ devdirread(Chan *c, char *d, long n, Dirtab *tab, int ntab, Devgen *gen)
 }
 
 /*
- * error(Eperm) if open permission not granted for up->user.
+ * error(Eperm) if open permission not granted for up->env->user.
  */
 void
 devpermcheck(char *fileuid, ulong perm, int omode)
@@ -341,10 +293,10 @@ devpermcheck(char *fileuid, ulong perm, int omode)
 	ulong t;
 	static int access[] = { 0400, 0200, 0600, 0100 };
 
-	if(strcmp(up->user, fileuid) == 0)
+	if(strcmp(up->env->user, fileuid) == 0)
 		perm <<= 0;
 	else
-	if(strcmp(up->user, eve) == 0)
+	if(strcmp(up->env->user, eve) == 0)
 		perm <<= 3;
 	else
 		perm <<= 6;
@@ -383,20 +335,12 @@ Return:
 	return c;
 }
 
-void
-devcreate(Chan*, char*, int, ulong)
-{
-	error(Eperm);
-}
-
 Block*
 devbread(Chan *c, long n, ulong offset)
 {
 	Block *bp;
 
 	bp = allocb(n);
-	if(bp == 0)
-		error(Enomem);
 	if(waserror()) {
 		freeb(bp);
 		nexterror();
@@ -423,27 +367,80 @@ devbwrite(Chan *c, Block *bp, ulong offset)
 }
 
 void
-devremove(Chan*)
+devcreate(Chan *c, char *name, int mode, ulong perm)
 {
+	USED(c);
+	USED(name);
+	USED(mode);
+	USED(perm);
 	error(Eperm);
-}
-
-int
-devwstat(Chan*, uchar*, int)
-{
-	error(Eperm);
-	return 0;
 }
 
 void
-devpower(int)
+devremove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 
 int
-devconfig(int, char *, DevConf *)
+devwstat(Chan *c, uchar *dp, int n)
 {
+	USED(c);
+	USED(dp);
+	USED(n);
 	error(Eperm);
 	return 0;
+}
+
+int
+readstr(ulong off, char *buf, ulong n, char *str)
+{
+	int size;
+
+	size = strlen(str);
+	if(off >= size)
+		return 0;
+	if(off+n > size)
+		n = size-off;
+	memmove(buf, str+off, n);
+	return n;
+}
+
+int
+readnum(ulong off, char *buf, ulong n, ulong val, int size)
+{
+	char tmp[64];
+
+	if(size > 64) size = 64;
+
+	snprint(tmp, sizeof(tmp), "%*.0lud ", size, val);
+	if(off >= size)
+		return 0;
+	if(off+n > size)
+		n = size-off;
+	memmove(buf, tmp+off, n);
+	return n;
+}
+
+/*
+ * check that the name in a wstat is plausible
+ */
+void
+validwstatname(char *name)
+{
+	validname(name, 0);
+	if(strcmp(name, ".") == 0 || strcmp(name, "..") == 0)
+		error(Efilename);
+}
+
+Dev*
+devbyname(char *name)
+{
+	int i;
+
+	for(i = 0; devtab[i] != nil; i++)
+		if(strcmp(devtab[i]->name, name) == 0)
+			return devtab[i];
+	return nil;
 }

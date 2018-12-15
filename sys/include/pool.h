@@ -1,54 +1,73 @@
+/* Inferno tree allocator */
+
 typedef struct Pool Pool;
-struct Pool {
-	char*	name;
-	ulong	maxsize;
+typedef struct Bhdr Bhdr;
+typedef struct Btail Btail;
 
-	ulong	cursize;
-	ulong	curfree;
-	ulong	curalloc;
+#pragma incomplete Pool
 
-	ulong	minarena;	/* smallest size of new arena */
-	ulong	quantum;	/* allocated blocks should be multiple of */
-	ulong	minblock;	/* smallest newly allocated block */
-
-	void*	freeroot;	/* actually Free* */
-	void*	arenalist;	/* actually Arena* */
-
-	void*	(*alloc)(ulong);
-	int	(*merge)(void*, void*);
-	void	(*move)(void* from, void* to);
-
-	int	flags;
-	int	nfree;
-	int	lastcompact;
-
-	void	(*lock)(Pool*);
-	void	(*unlock)(Pool*);
-	void	(*print)(Pool*, char*, ...);
-	void	(*panic)(Pool*, char*, ...);
-	void	(*logstack)(Pool*);
-
-	void*	private;
+enum
+{
+	MAGIC_A		= 0xa110c,		/* Allocated block */
+	MAGIC_F		= 0xbadc0c0a,		/* Free block */
+	MAGIC_E		= 0xdeadbabe,		/* End of arena */
+	MAGIC_I		= 0xabba		/* Block is immutable (hidden from gc) */
 };
 
-extern void*	poolalloc(Pool*, ulong);
-extern void*	poolallocalign(Pool*, ulong, ulong, long, ulong);
-extern void	poolfree(Pool*, void*);
-extern ulong	poolmsize(Pool*, void*);
-extern void*	poolrealloc(Pool*, void*, ulong);
-extern void	poolcheck(Pool*);
-extern int	poolcompact(Pool*);
-extern void	poolblockcheck(Pool*, void*);
-
-extern Pool*	mainmem;
-extern Pool*	imagmem;
-
-enum {	/* flags */
-	POOL_ANTAGONISM	= 1<<0,
-	POOL_PARANOIA	= 1<<1,
-	POOL_VERBOSITY	= 1<<2,
-	POOL_DEBUGGING	= 1<<3,
-	POOL_LOGGING	= 1<<4,
-	POOL_TOLERANCE	= 1<<5,
-	POOL_NOREUSE	= 1<<6,
+struct Bhdr
+{
+	ulong	magic;
+	ulong	size;
+	union {
+		uchar data[1];
+		struct {
+			Bhdr*	bhl;
+			Bhdr*	bhr;
+			Bhdr*	bhp;
+			Bhdr*	bhv;
+			Bhdr*	bhf;
+		} s;
+#define clink	u.l.link
+#define csize	u.l.size
+		struct {
+			Bhdr*	link;
+			int	size;
+		} l;
+	} u;
 };
+
+struct Btail
+{
+	/* ulong	pad; */
+	Bhdr*	hdr;
+};
+
+#define B2D(bp)		((void*)bp->u.data)
+#define D2B(b, dp)	b = ((Bhdr*)(((uchar*)dp)-(((Bhdr*)0)->u.data))); \
+			if(b->magic != MAGIC_A && b->magic != MAGIC_I)\
+				poolfault(dp, "alloc:D2B", getcallerpc(&dp));
+#define B2NB(b)		((Bhdr*)((uchar*)b + b->size))
+#define B2PT(b)		((Btail*)((uchar*)b - sizeof(Btail)))
+#define B2T(b)		((Btail*)(((uchar*)b)+b->size-sizeof(Btail)))
+
+#define B2LIMIT(b)	((Bhdr*)((uchar*)b + b->csize))
+
+#define BHDRSIZE	((int)(((Bhdr*)0)->u.data)+sizeof(Btail))
+
+extern	void	(*poolfault)(void *, char *, ulong);
+extern	void	poolinit(void);
+extern	void*	poolalloc(Pool*, ulong);
+extern	void	poolfree(Pool*, void*);
+extern	Bhdr*	poolchain(Pool*);
+extern	int	poolcompact(Pool*);
+extern	void	poolimmutable(void*);
+extern	ulong	poolmsize(Pool*, void*);
+extern	void	poolmutable(void*);
+extern	char*	poolname(Pool*);
+extern	int	poolread(char*, int, ulong);
+extern	void*	poolrealloc(Pool*, void*, ulong);
+extern	int	poolsetsize(char*, int);
+extern	void	poolsetcompact(Pool*, void (*)(void*, void*));
+extern	char*	poolaudit(char*(*)(int, Bhdr *));
+
+extern	void	(*poolmonitor)(int, ulong, Bhdr*, ulong);

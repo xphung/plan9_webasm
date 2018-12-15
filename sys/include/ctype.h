@@ -1,29 +1,81 @@
-#pragma	src	"/sys/src/libc/port"
-#pragma	lib	"libc.a"
+#ifndef	_CTYPE_H
+#define	_CTYPE_H
 
-#define	_U	01
-#define	_L	02
-#define	_N	04
-#define	_S	010
-#define	_P	020
-#define	_C	040
-#define	_B	0100
-#define	_X	0200
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-extern unsigned char	_ctype[];
+//#include <features.h>
 
-#define	isalpha(c)	(_ctype[(unsigned char)(c)]&(_U|_L))
-#define	isupper(c)	(_ctype[(unsigned char)(c)]&_U)
-#define	islower(c)	(_ctype[(unsigned char)(c)]&_L)
-#define	isdigit(c)	(_ctype[(unsigned char)(c)]&_N)
-#define	isxdigit(c)	(_ctype[(unsigned char)(c)]&_X)
-#define	isspace(c)	(_ctype[(unsigned char)(c)]&_S)
-#define	ispunct(c)	(_ctype[(unsigned char)(c)]&_P)
-#define	isalnum(c)	(_ctype[(unsigned char)(c)]&(_U|_L|_N))
-#define	isprint(c)	(_ctype[(unsigned char)(c)]&(_P|_U|_L|_N|_B))
-#define	isgraph(c)	(_ctype[(unsigned char)(c)]&(_P|_U|_L|_N))
-#define	iscntrl(c)	(_ctype[(unsigned char)(c)]&_C)
-#define	isascii(c)	((unsigned char)(c)<=0177)
-#define	_toupper(c)	((c)-'a'+'A')
-#define	_tolower(c)	((c)-'A'+'a')
-#define	toascii(c)	((c)&0177)
+int   isalnum(int);
+int   isalpha(int);
+int   isblank(int);
+int   iscntrl(int);
+int   isdigit(int);
+int   isgraph(int);
+int   islower(int);
+int   isprint(int);
+int   ispunct(int);
+int   isspace(int);
+int   isupper(int);
+int   isxdigit(int);
+int   tolower(int);
+int   toupper(int);
+
+#ifndef __cplusplus
+static __inline int __isspace(int _c)
+{
+	return _c == ' ' || (unsigned)_c-'\t' < 5;
+}
+
+#define isalpha(a) ( (((unsigned)(a)|32)-'a') < 26)
+#define isdigit(a) ( ((unsigned)(a)-'0') < 10)
+#define islower(a) ( ((unsigned)(a)-'a') < 26)
+#define isupper(a) ( ((unsigned)(a)-'A') < 26)
+#define isprint(a) ( ((unsigned)(a)-0x20) < 0x5f)
+#define isgraph(a) ( ((unsigned)(a)-0x21) < 0x5e)
+#define isspace(c) ((c)==' ' || (c)=='\t' || (c)=='\n')
+#endif
+
+#ifdef _PLAN9_SOURCE
+#define tolower(a) ((a)|0x20)
+#define toupper(a) ((a)&0x5f)
+#define isalnum(a) (isalpha((a)) || isdigit((a)))
+#endif
+
+/* prevent _XOPEN_SOURCE (default in features.h) triggering this conditional compile */
+#if defined(_POSIX_SOURCE) || defined(_POSIX_C_SOURCE) \
+ || /* defined(_XOPEN_SOURCE) ||*/ defined(_GNU_SOURCE) \
+ || defined(_BSD_SOURCE)
+
+#define __NEED_locale_t
+#include <bits/alltypes.h>
+
+int   isalnum_l(int, locale_t);
+int   isalpha_l(int, locale_t);
+int   isblank_l(int, locale_t);
+int   iscntrl_l(int, locale_t);
+int   isdigit_l(int, locale_t);
+int   isgraph_l(int, locale_t);
+int   islower_l(int, locale_t);
+int   isprint_l(int, locale_t);
+int   ispunct_l(int, locale_t);
+int   isspace_l(int, locale_t);
+int   isupper_l(int, locale_t);
+int   isxdigit_l(int, locale_t);
+int   tolower_l(int, locale_t);
+int   toupper_l(int, locale_t);
+
+int   isascii(int);
+int   toascii(int);
+#define _tolower(a) ((a)|0x20)
+#define _toupper(a) ((a)&0x5f)
+#define isascii(a) (0 ? isascii(a) : (unsigned)(a) < 128)
+
+#endif
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif

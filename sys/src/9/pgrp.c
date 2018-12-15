@@ -1,74 +1,22 @@
-#include	"u.h"
-#include	"../port/lib.h"
-#include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
-#include	"../port/error.h"
+#include	"error.h"
 
-enum {
-	Whinesecs = 10,		/* frequency of out-of-resources printing */
-};
-
-static Ref pgrpid;
-static Ref mountid;
-
-void
-pgrpnote(ulong noteid, char *a, long n, int flag)
-{
-	Proc *p, *ep;
-	char buf[ERRMAX];
-
-	if(n >= ERRMAX-1)
-		error(Etoobig);
-
-	memmove(buf, a, n);
-	buf[n] = 0;
-	p = proctab(0);
-	ep = p+conf.nproc;
-	for(; p < ep; p++) {
-		if(p->state == Dead)
-			continue;
-		if(up != p && p->noteid == noteid && p->kp == 0) {
-			qlock(&p->debug);
-			if(p->pid == 0 || p->noteid != noteid){
-				qunlock(&p->debug);
-				continue;
-			}
-			if(!waserror()) {
-				postnote(p, 0, buf, flag);
-				poperror();
-			}
-			qunlock(&p->debug);
-		}
-	}
-}
+static Ref	pgrpid;
+static Ref	mountid;
 
 Pgrp*
 newpgrp(void)
 {
 	Pgrp *p;
 
-	p = smalloc(sizeof(Pgrp));
-	p->ref = 1;
+	p = malloc(sizeof(Pgrp));
+	if(p == nil)
+		error(Enomem);
+	p->r.ref = 1;
 	p->pgrpid = incref(&pgrpid);
+	p->progmode = 0644;
 	return p;
-}
-
-Rgrp*
-newrgrp(void)
-{
-	Rgrp *r;
-
-	r = smalloc(sizeof(Rgrp));
-	r->ref = 1;
-	return r;
-}
-
-void
-closergrp(Rgrp *r)
-{
-	if(decref(r) == 0)
-		free(r);
 }
 
 void
@@ -76,13 +24,11 @@ closepgrp(Pgrp *p)
 {
 	Mhead **h, **e, *f, *next;
 
-	if(decref(p) != 0)
+	if(p == nil || decref(&p->r) != 0)
 		return;
 
-	qlock(&p->debug);
 	wlock(&p->ns);
 	p->pgrpid = -1;
-
 	e = &p->mnthash[MNTHASH];
 	for(h = p->mnthash; h < e; h++) {
 		for(f = *h; f; f = next) {
@@ -96,7 +42,8 @@ closepgrp(Pgrp *p)
 		}
 	}
 	wunlock(&p->ns);
-	qunlock(&p->debug);
+	cclose(p->dot);
+	cclose(p->slash);
 	free(p);
 }
 
@@ -132,13 +79,26 @@ pgrpcpy(Pgrp *to, Pgrp *from)
 	Mhead *f, **tom, **l, *mh;
 
 	wlock(&from->ns);
+	if(waserror()){
+		wunlock(&from->ns);
+		nexterror();
+	}
 	order = 0;
 	tom = to->mnthash;
 	for(i = 0; i < MNTHASH; i++) {
 		l = tom++;
 		for(f = from->mnthash[i]; f; f = f->hash) {
 			rlock(&f->lock);
-			mh = newmhead(f->from);
+			if(waserror()){
+				runlock(&f->lock);
+				nexterror();
+			}
+			mh = malloc(sizeof(Mhead));
+			if(mh == nil)
+				error(Enomem);
+			mh->from = f->from;
+			mh->r.ref = 1;
+			incref(&mh->from->r);
 			*l = mh;
 			l = &mh->hash;
 			link = &mh->mount;
@@ -147,58 +107,87 @@ pgrpcpy(Pgrp *to, Pgrp *from)
 				m->copy = n;
 				pgrpinsert(&order, m);
 				*link = n;
-				link = &n->next;
+				link = &n->next;	
 			}
+			poperror();
 			runlock(&f->lock);
 		}
 	}
 	/*
 	 * Allocate mount ids in the same sequence as the parent group
 	 */
-	lock(&mountid);
+	lock(&mountid.lk);
 	for(m = order; m; m = m->order)
 		m->copy->mountid = mountid.ref++;
-	unlock(&mountid);
+	unlock(&mountid.lk);
+
+	to->progmode = from->progmode;
+	to->slash = cclone(from->slash);
+	to->dot = cclone(from->dot);
+	to->nodevs = from->nodevs;
+	poperror();
 	wunlock(&from->ns);
+}
+
+Fgrp*
+newfgrp(Fgrp *old)
+{
+	Fgrp *new;
+	int n;
+
+	new = malloc(sizeof(Fgrp));
+	if(new == nil)
+		error(Enomem);
+	new->r.ref = 1;
+	n = DELTAFD;
+	if(old != nil){
+		lock(&old->l);
+		if(old->maxfd >= n)
+			n = (old->maxfd+1 + DELTAFD-1)/DELTAFD * DELTAFD;
+		new->maxfd = old->maxfd;
+		unlock(&old->l);
+	}
+	new->nfd = n;
+	new->fd = malloc(n*sizeof(Chan*));
+	if(new->fd == nil){
+		free(new);
+		error(Enomem);
+	}
+	return new;
 }
 
 Fgrp*
 dupfgrp(Fgrp *f)
 {
-	Fgrp *new;
-	Chan *c;
 	int i;
+	Chan *c;
+	Fgrp *new;
+	int n;
 
-	new = smalloc(sizeof(Fgrp));
-	if(f == nil){
-		new->fd = smalloc(DELTAFD*sizeof(Chan*));
-		new->nfd = DELTAFD;
-		new->ref = 1;
-		return new;
-	}
-
-	lock(f);
-	/* Make new fd list shorter if possible, preserving quantization */
-	new->nfd = f->maxfd+1;
-	i = new->nfd%DELTAFD;
-	if(i != 0)
-		new->nfd += DELTAFD - i;
-	new->fd = malloc(new->nfd*sizeof(Chan*));
+	new = malloc(sizeof(Fgrp));
+	if(new == nil)
+		error(Enomem);
+	new->r.ref = 1;
+	lock(&f->l);
+	n = DELTAFD;
+	if(f->maxfd >= n)
+		n = (f->maxfd+1 + DELTAFD-1)/DELTAFD * DELTAFD;
+	new->nfd = n;
+	new->fd = malloc(n*sizeof(Chan*));
 	if(new->fd == nil){
-		unlock(f);
+		unlock(&f->l);
 		free(new);
-		error("no memory for fgrp");
+		error(Enomem);
 	}
-	new->ref = 1;
-
 	new->maxfd = f->maxfd;
+	new->minfd = f->minfd;
 	for(i = 0; i <= f->maxfd; i++) {
 		if(c = f->fd[i]){
-			incref(c);
+			incref(&c->r);
 			new->fd[i] = c;
 		}
 	}
-	unlock(f);
+	unlock(&f->l);
 
 	return new;
 }
@@ -209,68 +198,26 @@ closefgrp(Fgrp *f)
 	int i;
 	Chan *c;
 
-	if(f == 0)
-		return;
-
-	if(decref(f) != 0)
-		return;
-
-	/*
-	 * If we get into trouble, forceclosefgrp
-	 * will bail us out.
-	 */
-	up->closingfgrp = f;
-	for(i = 0; i <= f->maxfd; i++)
-		if(c = f->fd[i]){
-			f->fd[i] = nil;
-			cclose(c);
-		}
-	up->closingfgrp = nil;
-
-	free(f->fd);
-	free(f);
-}
-
-/*
- * Called from sleep because up is in the middle
- * of closefgrp and just got a kill ctl message.
- * This usually means that up has wedged because
- * of some kind of deadly embrace with mntclose
- * trying to talk to itself.  To break free, hand the
- * unclosed channels to the close queue.  Once they
- * are finished, the blocked cclose that we've 
- * interrupted will finish by itself.
- */
-void
-forceclosefgrp(void)
-{
-	int i;
-	Chan *c;
-	Fgrp *f;
-
-	if(up->procctl != Proc_exitme || up->closingfgrp == nil){
-		print("bad forceclosefgrp call");
-		return;
+	if(f != nil && decref(&f->r) == 0) {
+		for(i = 0; i <= f->maxfd; i++)
+			if(c = f->fd[i])
+				cclose(c);
+		free(f->fd);
+		free(f);
 	}
-
-	f = up->closingfgrp;
-	for(i = 0; i <= f->maxfd; i++)
-		if(c = f->fd[i]){
-			f->fd[i] = nil;
-			ccloseq(c);
-		}
 }
-
 
 Mount*
 newmount(Mhead *mh, Chan *to, int flag, char *spec)
 {
 	Mount *m;
 
-	m = smalloc(sizeof(Mount));
+	m = malloc(sizeof(Mount));
+	if(m == nil)
+		error(Enomem);
 	m->to = to;
 	m->head = mh;
-	incref(to);
+	incref(&to->r);
 	m->mountid = incref(&mountid);
 	m->mflag = flag;
 	if(spec != 0)
@@ -295,26 +242,23 @@ mountfree(Mount *m)
 }
 
 void
-resrcwait(char *reason)
+closesigs(Skeyset *s)
 {
-	ulong now;
-	char *p;
-	static ulong lastwhine;
+	int i;
 
-	if(up == 0)
-		panic("resrcwait");
+	if(s == nil || decref(&s->r) != 0)
+		return;
+	for(i=0; i<s->nkey; i++)
+		freeskey(s->keys[i]);
+	free(s);
+}
 
-	p = up->psstate;
-	if(reason) {
-		up->psstate = reason;
-		now = seconds();
-		/* don't tie up the console with complaints */
-		if(now - lastwhine > Whinesecs) {
-			lastwhine = now;
-			print("%s\n", reason);
-		}
-	}
-
-	tsleep(&up->sleep, return0, 0, 300);
-	up->psstate = p;
+void
+freeskey(Signerkey *key)
+{
+	if(key == nil || decref(&key->r) != 0)
+		return;
+	free(key->owner);
+	(*key->pkfree)(key->pk);
+	free(key);
 }

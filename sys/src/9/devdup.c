@@ -1,21 +1,20 @@
-#include	"u.h"
-#include	"../port/lib.h"
-#include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
-#include	"../port/error.h"
+#include	"error.h"
+#include	"interp.h"
 
 /* Qid is (2*fd + (file is ctl))+1 */
 
 static int
-dupgen(Chan *c, char *, Dirtab*, int, int s, Dir *dp)
+dupgen(Chan *c, char *name, Dirtab *tab, int ntab, int s, Dir *dp)
 {
-	Fgrp *fgrp = up->fgrp;
+	Fgrp *fgrp = up->env->fgrp;
 	Chan *f;
 	static int perm[] = { 0400, 0200, 0600, 0 };
 	int p;
 	Qid q;
 
+	USED(name); USED(tab); USED(ntab);
 	if(s == DEVDOTDOT){
 		devdir(c, c->qid, ".", 0, eve, DMDIR|0555, dp);
 		return 1;
@@ -29,10 +28,10 @@ dupgen(Chan *c, char *, Dirtab*, int, int s, Dir *dp)
 		return 0;
 	if(s & 1){
 		p = 0400;
-		snprint(up->genbuf, sizeof up->genbuf, "%dctl", s/2);
+		sprint(up->genbuf, "%dctl", s/2);
 	}else{
 		p = perm[f->mode&3];
-		snprint(up->genbuf, sizeof up->genbuf, "%d", s/2);
+		sprint(up->genbuf, "%d", s/2);
 	}
 	mkqid(&q, s+1, 0, QTFILE);
 	devdir(c, q, up->genbuf, 0, eve, p, dp);
@@ -48,13 +47,13 @@ dupattach(char *spec)
 static Walkqid*
 dupwalk(Chan *c, Chan *nc, char **name, int nname)
 {
-	return devwalk(c, nc, name, nname, (Dirtab *)0, 0, dupgen);
+	return devwalk(c, nc, name, nname, nil, 0, dupgen);
 }
 
 static int
 dupstat(Chan *c, uchar *db, int n)
 {
-	return devstat(c, db, n, (Dirtab *)0, 0L, dupgen);
+	return devstat(c, db, n, nil, 0, dupgen);
 }
 
 static Chan*
@@ -83,7 +82,7 @@ dupopen(Chan *c, int omode)
 		f->offset = 0;
 	}else{
 		/* fd file */
-		f = fdtochan(fd, openmode(omode), 0, 1);
+		f = fdtochan(up->env->fgrp, fd, openmode(omode), 0, 1);
 		cclose(c);
 	}
 	if(omode & OCEXEC)
@@ -92,8 +91,9 @@ dupopen(Chan *c, int omode)
 }
 
 static void
-dupclose(Chan*)
+dupclose(Chan *c)
 {
+	USED(c);
 }
 
 static long
@@ -104,12 +104,17 @@ dupread(Chan *c, void *va, long n, vlong offset)
 	int fd, twicefd;
 
 	if(c->qid.type == QTDIR)
-		return devdirread(c, a, n, (Dirtab *)0, 0L, dupgen);
+		return devdirread(c, a, n, nil, 0, dupgen);
 	twicefd = c->qid.path - 1;
 	fd = twicefd/2;
 	if(twicefd & 1){
-		c = fdtochan(fd, -1, 0, 1);
-		procfdprint(c, fd, 0, buf, sizeof buf);
+		c = fdtochan(up->env->fgrp, fd, -1, 0, 1);
+		if(waserror()){
+			cclose(c);
+			nexterror();
+		}
+		progfdprint(c, fd, 0, buf, sizeof buf);
+		poperror();
 		cclose(c);
 		return readstr((ulong)offset, va, n, buf);
 	}
@@ -118,9 +123,10 @@ dupread(Chan *c, void *va, long n, vlong offset)
 }
 
 static long
-dupwrite(Chan*, void*, long, vlong)
+dupwrite(Chan *c, void *a, long n, vlong o)
 {
-	error(Eperm);
+	USED(c); USED(a); USED(n); USED(o);
+	panic("dupwrite");
 	return 0;		/* not reached */
 }
 
@@ -128,9 +134,7 @@ Dev dupdevtab = {
 	'd',
 	"dup",
 
-	devreset,
 	devinit,
-	devshutdown,
 	dupattach,
 	dupwalk,
 	dupstat,

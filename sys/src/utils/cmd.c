@@ -166,12 +166,12 @@ int shell_exec(void (*f)(void *), void *f_args, char *cmd, char **argv, int pid)
 
 #ifdef __wasm32__
 #undef main
-//#include <stdio.h>
+#include <stdio.h>
 extern void _fdinit(char *, char *);
 
 int main(int argc, char *argv[]) {
-	//_fdinit(0, 0);
-	//printf("printf working: argc=%d exp(1.0)=%g cos(0.0)=%g\n" , argc, exp(1.0), cos(0.0));
+	_fdinit(0, 0);
+	printf("printf working: argc=%d exp(1.0)=%g cos(0.0)=%g\n" , argc, exp(1.0), cos(0.0));
 	sh_main(argc, argv);
 	return 0;
 }

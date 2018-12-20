@@ -117,7 +117,7 @@ SRC_SUBDIRS += musl/src/ctype musl/src/env musl/src/errno musl/src/exit musl/src
 ###			SYS_semctl SYS_semget SYS_semop SYS_semtimedop
 ###			SYS_shmat SYS_shmctl SYS_shmdt SYS_shmget 
 
-SRC_SUBDIRS += musl/src/crypt musl/src/search musl/src/temp $(ARCH)/musl/src/unistd musl/src/regex #musl/src/passwd
+SRC_SUBDIRS += musl/src/crypt musl/src/search musl/src/temp $(ARCH)/musl/src/unistd #musl/src/regex #musl/src/passwd
 
 SRC_DIRS = $(addprefix $(srcdir)/,$(SRC_SUBDIRS))
 ARCH_GLOBS = $(addsuffix /$(ARCH)/*.c,$(SRC_DIRS)) $(addprefix $(srcdir)/$(ARCH)/,$(addsuffix /*.[csS],$(SRC_SUBDIRS)))
@@ -126,7 +126,7 @@ AOBJS = $(LIBC_OBJS)
 GENH =
 
 CFLAGS_ALL = $(CFLAGS_C99FSE)
-CFLAGS_ALL += #-D_POSIX_SOURCE -D_XOPEN_SOURCE=700 #-D_BSD_EXTENSION -D_SUSV2_SOURCE
+CFLAGS_ALL += -D_POSIX_SOURCE -D_XOPEN_SOURCE=700 #-D_BSD_EXTENSION -D_SUSV2_SOURCE
 CFLAGS_ALL += -isystem $(srcdir)/sys/include -isystem $(srcdir)/$(ARCH)/musl/arch -I$(srcdir)/$(ARCH)/musl/src/internal -isystem $(srcdir)/musl/include
 CFLAGS_ALL += $(CPPFLAGS) $(CFLAGS_AUTO) $(CFLAGS)
 

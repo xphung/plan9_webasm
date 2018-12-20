@@ -1,252 +1,376 @@
-ulong	FPcontrol(ulong,ulong);
-ulong	FPstatus(ulong,ulong);
-void		FPsave(void*);
-void		FPrestore(void*);
-void		Sleep(Rendez*, int (*)(void*), void*);
-int		Wakeup(Rendez*);
-void		FPinit(void);
-void		addprog(Proc*);
-Block*	adjustblock(Block*, int);
-Block*	allocb(int);
-Block*	bl2mem(uchar*, Block*, int);
-int	blocklen(Block*);
-char*	c2name(Chan*);
-int		canlock(Lock*);
-int		canqlock(QLock*);
-void		cclose(Chan*);
-void		chandevinit(void);
-void		chanfree(Chan*);
-Dir*		chandirstat(Chan*);
-void		cinit(void);
-char*	clipread(void);
-int		clipwrite(char*);
-extern void	(*coherence)(void);
-void		copen(Chan*);
-void		cmderror(Cmdbuf*, char*);
-Block*	concatblock(Block*);
-int		cread(Chan*, uchar*, int, vlong);
-void		cwrite(Chan*, uchar*, int, vlong);
-Chan*	cunique(Chan*);
-void		cupdate(Chan*, uchar*, int, vlong);
-char*	cleanname(char*);
-Chan*	cclone(Chan*);
-void		closeegrp(Egrp*);
-void		closefgrp(Fgrp*);
-void		closepgrp(Pgrp*);
-void		closesigs(Skeyset*);
-int		cmount(Chan*, Chan*, int, char*);
-Chan*	createdir(Chan*, Mhead*);
-void		cunmount(Chan*, Chan*);
-int		decref(Ref*);
-long		devbwrite(Chan*, Block*, ulong);
-void		devcreate(Chan*, char*, int, ulong);
-void		devdir(Chan*, Qid, char*, long, char*, long, Dir*);
-long		devdirread(Chan*, char*, long, Dirtab*, int, Devgen*);
-void		devinit(void);
-int		devno(int, int);
-Dev*		devbyname(char*);
-void		devpermcheck(char*, ulong, int);
-void		devremove(Chan*);
-int		devstat(Chan*, uchar*, int, Dirtab*, int, Devgen*);
-long		devtabread(Chan*, void*, long, vlong);
-int		devwstat(Chan*, uchar*, int);
-Chan*	devattach(int, char*);
-Block*	devbread(Chan*, long, ulong);
-Chan*	devclone(Chan*);
-Devgen	devgen;
-Chan*	devopen(Chan*, int, Dirtab*, int, Devgen*);
-Walkqid*	devwalk(Chan*, Chan*, char**, int, Dirtab*, int, Devgen*);
-void		disfault(void*, char*);
-void		disinit(void*);
-int		domount(Chan**, Mhead**);
-void	drawqlock(void);
-void	drawqunlock(void);
-Fgrp*	dupfgrp(Fgrp*);
-void		egrpcpy(Egrp*, Egrp*);
-int		emptystr(char*);
-void		emuinit(void*);
-int		eqchan(Chan*, Chan*, int);
-int		eqqid(Qid, Qid);
-void		error(char*);
-void		errorf(char*, ...);
-#pragma varargck argpos errorf 1
-void		excinit(void);
-void		exhausted(char*);
-int		export(int, char*, int);
-Chan*	fdtochan(Fgrp*, int, int, int, int);
-int		findmount(Chan**, Mhead**, int, int, Qid);
-void		freeb(Block*);
-void		freeblist(Block*);
-void		freeskey(Signerkey*);
-ulong	getcallerpc(void*);
-ulong	getFPcontrol(void);
-ulong	getFPstatus(void);
-void		gkbdputc(Queue*, int);
-int		incref(Ref*);
-int		iprint(char*, ...);
-void		isdir(Chan*);
-int		isdotdot(char*);
-int		iseve(void);
-int		kannounce(char*, char*);
-int		kdial(char*, char*, char*, int*);
-void		kproc(char*, void (*)(void*), void*, int);
-void	kprocinit(Proc*);
-int		kfgrpclose(Fgrp*, int);
-void		ksetenv(char*, char*, int);
-void		kstrcpy(char*, char*, int);
-void		kstrdup(char**, char*);
-long		latin1(uchar*, int);
-void		libinit(char*);
-void		links(void);
-void		lock(Lock*);
-Cmdtab*		lookupcmd(Cmdbuf*, Cmdtab*, int);
-Block*	mem2bl(uchar*, int);
-int		memusehigh(void);
-int		memlow(void);
-void		mkqid(Qid*, vlong, ulong, int);
-Qid	mkuqid(Chan*, Uqid*);
-Chan*		mntauth(Chan*, char*);
-long		mntversion(Chan*, char*, int, int);
-void		mountfree(Mount*);
-void		mousetrack(int, int, int, int);
-void		muxclose(Mnt*);
-Chan*	namec(char*, int, int, ulong);
-Chan*	newchan(void);
-Cname*	newcname(char*);
-Egrp*	newegrp(void);
-Fgrp*	newfgrp(Fgrp*);
-Mount*	newmount(Mhead*, Chan*, int, char*);
-Pgrp*	newpgrp(void);
-Proc*	newproc(void);
-void		nexterror(void);
-void		notkilled(void);
-int		openmode(ulong);
-void		osblock(void);
-void*		oscmd(char**, int, char*, int*);
-int		oscmdwait(void*, char*, int);
-int		oscmdkill(void*);
-void		oscmdfree(void*);
-void		oserror(void);
-void		oserrstr(char*, uint);
-void		oslongjmp(void*, osjmpbuf, int);
-long		osmillisec(void);
-int		osmillisleep(ulong);
-void		osready(Proc*);
-int		limbosleep(ulong);
-vlong	osusectime(void);
-Block*	packblock(Block*);
-Block*	padblock(Block*, int);
-void		panic(char*, ...);
-Cmdbuf*		parsecmd(char*, int);
-void		pexit(char*, int);
-void		pgrpcpy(Pgrp*, Pgrp*);
-int		progfdprint(Chan*, int, int, char*, int);
-void		putenvq(char*, char*, int);
-void		putenvqv(char*, char**, int, int);
-void		putmhead(Mhead*);
-Block*	pullupblock(Block*, int);
-Block*	pullupqueue(Queue*, int);
-void		qaddlist(Queue*, Block*);
-Block*	qbread(Queue*, int);
-long		qbwrite(Queue*, Block*);
-Queue*		qbypass(void (*)(void*, Block*), void*);
-int		qcanread(Queue*);
-void		qclose(Queue*);
-int		qisclosed(Queue*);
-int		qconsume(Queue*, void*, int);
-Block*	qcopy(Queue*, int, ulong);
-int		qdiscard(Queue*, int);
-void		qflush(Queue*);
-void		qfree(Queue*);
-int		qfull(Queue*);
-Block*	qget(Queue*);
-void		qhangup(Queue*, char*);
-int		qiwrite(Queue*, void*, int);
-int		qlen(Queue*);
-void		qlock(QLock*);
-void		qnoblock(Queue*, int);
-Queue*	qopen(int, int, void (*)(void*), void*);
-int		qpass(Queue*, Block*);
-int		qproduce(Queue*, void*, int);
-void		qputback(Queue*, Block*);
-long		qread(Queue*, void*, int);
-Block*	qremove(Queue*);
-void		qreopen(Queue*);
-void		qsetlimit(Queue*, int);
-int		qstate(Queue*);
-void		qunlock(QLock*);
-int		qwindow(Queue*);
-int		qwrite(Queue*, void*, int);
-ulong	randomread(void *xp, ulong n);
-void	randominit(void);
-int		readkbd(void);
-int		readnum(ulong, char*, ulong, ulong, int);
-int		readnum_vlong(ulong, char*, ulong, vlong, int);
-int		readstr(ulong, char*, ulong, char*);
-#define	seconds()	(osusectime()/1000000)
-void		seterror(char*, ...);
-void		setid(char*, int);
-void	setpointer(int, int);
-char*	skipslash(char*);
-void		srvrtinit(void);
-void		swiproc(Proc*, int);
-Block*	trimblock(Block*, int, int);
-long		unionread(Chan*, void*, long);
-void		unlock(Lock*);
-Uqid*	uqidalloc(Uqidtab*, Chan*);
-void		uqidinit(Uqidtab*);
-void		freeuqid(Uqidtab*, Uqid*);
-void		validname(char*, int);
-void		validstat(uchar*, int);
-void		validwstatname(char*);
-void		vmachine(void*);
-int		walk(Chan**, char**, int, int, int*);
-void		cleanexit(int);
-void		oshostintr(Proc*);
-void		osenter(void);
-void		osleave(void);
-void		oslopri(void);
-void		ospause(void);
-void		osyield(void);
-void		osreboot(char*, char**);
-ulong	poolmaxsize(void);
-Pool*	poolmk(char*, int, int, int);
-void		hnputv(void*, vlong);
-void		hnputl(void*, ulong);
-void		hnputs(void*, ushort);
-vlong		nhgetv(void*);
-ulong		nhgetl(void*);
-ushort		nhgets(void*);
-void*	vmalloc(size_t, const char*, char *);
-void*	vkmalloc(size_t, const char*, char *);
-void*	vsmalloc(size_t, const char*, char *);
-void	kfree(void *, const char*, char *);
+/*
+ *   fns.h: generated by the following command:
+ *
+ *  	tail -n +1 sys/src/9/*.c wasm/sys/src/9/devproc.c wasm/sys/src/9/os.c | tr '.</\n{}#;' '\t(\t\t\n\n\n\n'
+ * 	| grep -o '\t[_A-Za-z][_A-Za-z0-9 \*]*\t[A-Za-z_][A-Za-z0-9_ ]*'\('.*\t' | grep -v static >fns.h
+ *
+ *   (then some further manual editing required to format filename headings)
+ */
 
-/* Namespace Emulation */
-int		kbind(char*, char*, int);
-int		kclose(int);
-int		kcreate(char*, int, ulong);
-int		kdup(int, int);
-int		kfstat(int, uchar*, int);
-int		kfwstat(int, uchar*, int);
-int		kmount(int, int, char*, int, char*);
-int		kunmount(char*, char*);
-int		kopen(char*, int);
-long		kread(int, void*, long);
-int		kremove(char*);
-vlong	kseek(int, vlong, int);
-int		kstat(char*, uchar*, int);
-long		kwrite(int, void*, long);
-int		kwstat(char*, uchar*, int);
-Dir*		kdirstat(char*);
-Dir*		kdirfstat(int);
-int		kdirwstat(char*, Dir*);
-int		kdirfwstat(int, Dir*);
-long		kdirread(int, Dir**);
-int		klisten(char*, char*);
 
-Cname*	addelem(Cname*, char*);
-void		cleancname(Cname*);
-void		cnameclose(Cname*);
+/*   alloc   */
 
-#pragma varargck argpos iprint 1
+	int	memusehigh(void);
+	int	memlow(void);
+	int	poolsetsize(char *s, int size);
+	void	poolimmutable(void *v);
+	void	poolmutable(void *v);
+	char*	poolname(Pool *p);
+	Bhdr*	poolchain(Pool *p);
+	void	pooldel(Pool *p, Bhdr *t);
+	void	pooladd(Pool *p, Bhdr *q);
+	void*	poolalloc(Pool *p, ulong asize);
+	void	poolfree(Pool *p, void *v);
+	void*	poolrealloc(Pool *p, void *v, ulong size);
+	ulong	poolmsize(Pool *p, void *v);
+	ulong	poolmaxsize(void);
+	int	poolread(char *va, int count, ulong offset);
+	void*	vmalloc(size_t size, const char *type, char *data);
+	void*	vsmalloc(size_t size, const char *type, char *data);
+	void*	vkmalloc(size_t size, const char *type, char *data);
+	void*	malloc(size_t size);
+	void*	mallocz(ulong size, int clr);
+	void	kfree(void *v, const char *type, char *data);
+	void	free(void *v);
+	void*	realloc(void *v, size_t size);
+	void	setmalloctag(void *v, ulong pc);
+	ulong	getmalloctag(void *v);
+	void	setrealloctag(void *v, ulong pc);
+	ulong	getrealloctag(void *v);
+	ulong	msize(void *v);
+	void*	calloc(size_t n, size_t szelem);
+	void	pooldump(Pool *p);
+	void	poolsetcompact(Pool *p, void (*move)(void*, void*));
+	int	poolcompact(Pool *pool);
+	char*	poolaudit(char*(*audit)(int, Bhdr *));
+
+/*   cache   */
+
+	void	cinit(void);
+	void	copen(Chan *c);
+	int	cread(Chan *c, uchar *b, int n, vlong off);
+	void	cwrite(Chan *c, uchar *buf, int n, vlong off);
+	void	cupdate(Chan *c, uchar *buf,  int n, vlong off);
+
+/*   chan   */
+
+	char*	c2name(Chan *c);
+	int	isdotdot(char *p);
+	int	incref(Ref *r);
+	int	decref(Ref *r);
+	void	kstrcpy(char *s, char *t, int ns);
+	int	emptystr(char *s);
+	void	kstrdup(char **p, char *s);
+	void	chandevinit(void);
+	Chan*	newchan(void);
+	Cname*	newcname(char *s);
+	void	cnameclose(Cname *n);
+	Cname*	addelem(Cname *n, char *s);
+	void	chanfree(Chan *c);
+	void	cclose(Chan *c);
+	Chan*	cunique(Chan *c);
+	int	eqqid(Qid a, Qid b);
+	int	eqchan(Chan *a, Chan *b, int pathonly);
+	int	eqchantdqid(Chan *a, int type, int dev, Qid qid, int pathonly);
+	Mhead*	newmhead(Chan *from);
+	int	cmount(Chan *new, Chan *old, int flag, char *spec);
+	void	cunmount(Chan *mnt, Chan *mounted);
+	Chan*	cclone(Chan *c);
+	int	findmount(Chan **cp, Mhead **mp, int type, int dev, Qid qid);
+	int	domount(Chan **cp, Mhead **mp);
+	Chan*	undomount(Chan *c, Cname *name);
+	int	walk(Chan **cp, char **names, int nnames, int nomount, int *nerror);
+	Chan*	createdir(Chan *c, Mhead *m);
+	void	cleancname(Cname *n);
+	Chan*	namec(char *aname, int amode, int omode, ulong perm);
+	char*	skipslash(char *name);
+	void	validname(char *aname, int slashok);
+	void	isdir(Chan *c);
+	void	putmhead(Mhead *m);
+
+/*   dev   */
+
+	void	mkqid(Qid *q, vlong path, ulong vers, int type);
+	int	devno(int c, int user);
+	void	devdir(Chan *c, Qid qid, char *n, long length, char *user, long perm, Dir *db);
+	int	devgen(Chan *c, char *name, Dirtab *tab, int ntab, int i, Dir *dp);
+	void	devinit(void);
+	void	devshutdown(void);
+	Chan*	devattach(int tc, char *spec);
+	Chan*	devclone(Chan *c);
+	Walkqid* devwalk(Chan *c, Chan *nc, char **name, int nname, Dirtab *tab, int ntab, Devgen *gen);
+	int	devstat(Chan *c, uchar *db, int n, Dirtab *tab, int ntab, Devgen *gen);
+	long	devdirread(Chan *c, char *d, long n, Dirtab *tab, int ntab, Devgen *gen);
+	void	devpermcheck(char *fileuid, ulong perm, int omode);
+	Chan*	devopen(Chan *c, int omode, Dirtab *tab, int ntab, Devgen *gen);
+	Block*	devbread(Chan *c, long n, ulong offset);
+	long	devbwrite(Chan *c, Block *bp, ulong offset);
+	void	devcreate(Chan *c, char *name, int mode, ulong perm);
+	void	devremove(Chan *c);
+	int	devwstat(Chan *c, uchar *dp, int n);
+	int	readstr(ulong off, char *buf, ulong n, char *str);
+	int	readnum(ulong off, char *buf, ulong n, ulong val, int size);
+	void	validwstatname(char *name);
+	Dev*	devbyname(char *name);
+
+/*   devcons   */
+
+	void	kbdslave(void *a);
+	void	gkbdputc(Queue *q, int ch);
+	void	consinit(void);
+	int	nrand(int n);
+	int	rand(void);
+	ulong	truerand(void);
+	void	_genrandomqlock(void);
+	void	_genrandomqunlock(void);
+
+/*   devmnt   */
+
+	long	mntversion(Chan *c, char *version, int msize, int returnlen);
+	Chan*	mntauth(Chan *c, char *spec);
+	Chan*	mntchan(void);
+	void	muxclose(Mnt *m);
+	void	mntpntfree(Mnt *m);
+	long	mntrdwr(int type, Chan *c, void *buf, long n, vlong off);
+	void	mountrpc(Mnt *m, Mntrpc *r);
+	void	mountio(Mnt *m, Mntrpc *r);
+	int	mntrpcread(Mnt *m, Mntrpc *r);
+	void	mntgate(Mnt *m);
+	void	mountmux(Mnt *m, Mntrpc *r);
+	Mntrpc*	mntflushalloc(Mntrpc *r, ulong iounit);
+	void	mntflushfree(Mnt *m, Mntrpc *r);
+	Mntrpc*	mntralloc(Chan *c, ulong msize);
+	void	mntfree(Mntrpc *r);
+	void	mntqrm(Mnt *m, Mntrpc *r);
+	Mnt*	mntchk(Chan *c);
+	void	mntdirfix(uchar *dirbuf, Chan *c);
+	int	rpcattn(void *v);
+
+/*   devproc   */
+
+	int	procfdprint(Chan *c, int fd, int w, char *s, int ns);
+
+/*   devtab   */
+
+	long	devtabread(Chan *c, void* buf, long n, vlong off);
+
+/*   env   */
+
+	Egrp*	newegrp(void);
+	void	closeegrp(Egrp *e);
+	void	egrpcpy(Egrp *to, Egrp *from);
+	void	ksetenv(char *var, char *val, int conf);
+
+/*   errstr   */
+
+	void	kwerrstr(char *fmt, ...);
+	void	kerrstr(char *err, uint size);
+	void	kgerrstr(char *err, uint size);
+
+/*   latin1   */
+	long	latin1(uchar *k, int n);
+
+/*   lock   */
+
+	void	lock(Lock *l);
+	int	canlock(Lock *l);
+	void	unlock(Lock *l);
+	void	qlock(QLock *q);
+	int	canqlock(QLock *q);
+	void	qunlock(QLock *q);
+	void	rlock(RWlock *l);
+	int	canrlock(RWlock *l);
+	void	runlock(RWlock *l);
+	void	wlock(RWlock *l);
+	void	wunlock(RWlock *l);
+
+/*   main   */
+
+	void	putenvq(char *name, char *val, int conf);
+	void	putenvqv(char *name, char **v, int n, int conf);
+	int	kmain(int argc, char *argv[]);
+	void	links(void);
+	void	emuinit(void *imod);
+	void	errorf(char *fmt, ...);
+	void	error(char *err);
+	void	exhausted(char *resource);
+	void	nexterror(void);
+	void*	waserr(void);
+	void	poperr(void);
+	char*	enverror(void);
+	void	panic(char *fmt, ...);
+	int	kprint(int, const char *fmt, ...);
+	void	_assert(char *fmt);
+	void	sysfatal(char *fmt, ...);
+	void	oserror(void);
+	void	libinit(char *imod);
+
+/*   parse   */
+
+	Cmdbuf*	parsecmd(char *p, int n);
+	void	cmderror(Cmdbuf *cb, char *s);
+	Cmdtab*	lookupcmd(Cmdbuf *cb, Cmdtab *ctab, int nctab);
+
+/*   pgrp   */
+
+	Pgrp*	newpgrp(void);
+	void	closepgrp(Pgrp *p);
+	void	pgrpinsert(Mount **order, Mount *m);
+	void	pgrpcpy(Pgrp *to, Pgrp *from);
+	Fgrp*	newfgrp(Fgrp *old);
+	Fgrp*	dupfgrp(Fgrp *f);
+	void	closefgrp(Fgrp *f);
+	Mount*	newmount(Mhead *mh, Chan *to, int flag, char *spec);
+	void	mountfree(Mount *m);
+	void	closesigs(Skeyset *s);
+	void	freeskey(Signerkey *key);
+
+/*   print   */
+
+	void	_fmtlock(void);
+	void	_fmtunlock(void);
+	int	_efgfmt(Fmt *f);
+
+/*   proc   */
+
+	Proc*	newproc(void);
+	void	werrstr(char *fmt, ...);
+	void	Sleep(Rendez *r, int (*f)(void*), void *arg);
+	int	Wakeup(Rendez *r);
+	void	swiproc(Proc *p, int interp);
+	void	notkilled(void);
+	void	osenter(void);
+	void	osleave(void);
+	void	rptwakeup(void *o, void *ar);
+	void*	rptproc(char *s, int t, void *o, int (*active)(void*), int (*ck)(void*, int), void (*f)(void*));
+	void	pexit(char *msg, int t);
+	Proc*	procpid(long pid);
+	Proc*	proctab(int i);
+	void	cleanexit(int s);
+	void	kproc(char *name, void (*func)(void*), void *arg, int flags);
+	void	oshostintr(Proc *p);
+	void	osyield(void);
+	void	osblock(void);
+	void	osready(Proc *p);
+	int	osmillisleep(ulong);
+	void	oslopri(void);
+	void	osreboot(char *, char**);
+	void	oslongjmp(void *regs, osjmpbuf env, int val);
+	void	acquire(void);
+	void	release(void);
+	void	addprog(Proc *p);
+	vlong	nsec(void);
+	int	_tas(int *l);
+
+/*   qio   */
+
+	void	checkb(Block *b, char *msg);
+	void	freeb(Block *b);
+	void	freeblist(Block *b);
+	Block*	padblock(Block *bp, int size);
+	int	blocklen(Block *bp);
+	int	blockalloclen(Block *bp);
+	Block*	concatblock(Block *bp);
+	Block*	pullupblock(Block *bp, int n);
+	Block*	pullupqueue(Queue *q, int n);
+	Block *	trimblock(Block *bp, int offset, int len);
+	Block*	copyblock(Block *bp, int count);
+	Block*	adjustblock(Block* bp, int len);
+	int	pullblock(Block **bph, int count);
+	Block*	iallocb(int size);
+	Block*	allocb(int size);
+	Block*	qget(Queue *q);
+	int	qdiscard(Queue *q, int len);
+	int	qconsume(Queue *q, void *vp, int len);
+	int	qpass(Queue *q, Block *b);
+	int	qpassnolim(Queue *q, Block *b);
+	Block*	packblock(Block *bp);
+	int	qproduce(Queue *q, void *vp, int len);
+	Block*	qcopy(Queue *q, int len, ulong offset);
+	Queue*	qopen(int limit, int msg, void (*kick)(void*), void *arg);
+	Queue*	qbypass(void (*bypass)(void*, Block*), void *arg);
+	void	qaddlist(Queue *q, Block *b);
+	Block*	qremove(Queue *q);
+	Block*	bl2mem(uchar *p, Block *b, int n);
+	Block*	mem2bl(uchar *p, int len);
+	void	qputback(Queue *q, Block *b);
+	Block*	qbread(Queue *q, int len);
+	long	qread(Queue *q, void *vp, int len);
+	long	qbwrite(Queue *q, Block *b);
+	int	qwrite(Queue *q, void *vp, int len);
+	int	qiwrite(Queue *q, void *vp, int len);
+	void	qfree(Queue *q);
+	void	qclose(Queue *q);
+	void	qhangup(Queue *q, char *msg);
+	int	qisclosed(Queue *q);
+	void	qreopen(Queue *q);
+	int	qlen(Queue *q);
+	int	qwindow(Queue *q);
+	int	qcanread(Queue *q);
+	void	qsetlimit(Queue *q, int limit);
+	void	qnoblock(Queue *q, int onoff);
+	void	qflush(Queue *q);
+	int	qfull(Queue *q);
+	int	qstate(Queue *q);
+	int	qclosed(Queue *q);
+
+/*   random   */
+
+	void	randominit(void);
+	ulong	randomread(void *xp, ulong n);
+
+/*   sysfile   */
+
+	Chan*	fdtochan(Fgrp *f, int fd, int mode, int chkmnt, int iref);
+	long	kchanio(void *vc, void *buf, int n, int mode);
+	int	openmode(ulong o);
+	int	kchdir(char *path);
+	int	kfgrpclose(Fgrp *f, int fd);
+	int	kclose(int fd);
+	int	kcreate(char *path, int mode, ulong perm);
+	int	kdup(int old, int new);
+	int	kfstat(int fd, uchar *buf, int n);
+	char*	kfd2path(int fd);
+	int	kfauth(int fd, char *aname);
+	int	kfversion(int fd, uint msize, char *vers, uint arglen);
+	int	kpipe(int fd[2]);
+	int	kfwstat(int fd, uchar *buf, int n);
+	long	bindmount(Chan *c, char *old, int flag, char *spec);
+	int	kbind(char *new, char *old, int flags);
+	int	kmount(int fd, int afd, char *old, int flags, char *spec);
+	int	kunmount(char *old, char *new);
+	int	kopen(char *path, int mode);
+	long	unionread(Chan *c, void *va, long n);
+	long	kread(int fd, void *va, long n);
+	long	kpread(int fd, void *va, long n, vlong off);
+	int	kremove(char *path);
+	vlong	kseek(int fd, vlong off, int whence);
+	void	validstat(uchar *s, int n);
+	int	kstat(char *path, uchar *buf, int n);
+	long	kwrite(int fd, void *va, long n);
+	long	kpwrite(int fd, void *va, long n, vlong off);
+	int	kwstat(char *path, uchar *buf, int n);
+	Dir*	chandirstat(Chan *c);
+	Dir*	kdirstat(char *name);
+	Dir*	kdirfstat(int fd);
+	int	kdirwstat(char *name, Dir *dir);
+	int	kdirfwstat(int fd, Dir *dir);
+	long	kdirread(int fd, Dir **d);
+	int	kiounit(int fd);
+
+/*   uqid   */
+
+	void	uqidinit(Uqidtab *tab);
+	Uqid *	uqidalloc(Uqidtab *tab, Chan *c);
+	void	freeuqid(Uqidtab *tab, Uqid *q);
+	Qid	mkuqid(Chan *c, Uqid *qid);
+
+/*   auth   */
+
+	int	iseve(void);
+	long	sysfversion(ulong *arg);
+	long	sysfauth(ulong *arg);
+	long	userwrite(char *a, int n);
+	long	hostownerwrite(char *a, int n);
+	long	hostdomainwrite(char *a, int n);
+

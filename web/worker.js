@@ -12,7 +12,7 @@ let sharedLock;
 let wasmImport = {
 	env: {
 		log_writeln: (fd, buffer, n) => console.log(stringAt(buffer, n)),
-		cons_read: (fd, buffer, n) => {
+		tty_read: (fd, buffer, n) => {
 			let consumer = Atomics.load(sharedLock, 0);
 			while (Atomics.load(sharedLock, 1) == consumer) {
 				Atomics.wait(sharedLock, 1, consumer, 1000000);
@@ -28,11 +28,10 @@ let wasmImport = {
 			Atomics.store(sharedLock, 0, consumer);
 			return j;
 		},
-		cons_write: (fd, buffer, n) => {
+		tty_write: (fd, buffer, n) => {
 			var data = stringAt(buffer, n);
 			//TODO: translate \n when converting from Uint8 array instead of current separate step
 			data = data.replace(/\n/gi, "\r\n");
-			console.log("sys_write: fd="+fd+" len="+n+" addr="+buffer+" text="+data+" code="+data.charCodeAt(data.length-1));
 			sharedLock[2] = buffer;
 			sharedLock[3] = n;
 			postMessage(data);//t.io.print(data);
@@ -120,7 +119,7 @@ function init() {
 			kmodule = module;
 			parent = instance;
 			mem = parent.exports.memory;
-			parent.exports.kmain(0, 0);
+			//parent.exports.kmain(0, 0);
 		}
 		if (!proc) {
 			const instance = await WebAssembly.instantiate(kmodule, wasmImport);
@@ -130,7 +129,7 @@ function init() {
 			const ubytes = new Uint32Array(mem.buffer);
 			ubytes.set(new Uint32Array(buffer));
 			proc = instance;
-			proc.exports.main(0, 0);
+			proc.exports._start();
 		}
 		console.log('Worker: Posting message back to main script\n');
 		postMessage(count);

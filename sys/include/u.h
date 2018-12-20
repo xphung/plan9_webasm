@@ -51,14 +51,11 @@ typedef long time_t;
 #define abort	        kabort
 #define atexit          atexits
 #define atexitdont      atexitsdont
-#define frexp		kfrexp
-#define ldexp		kldexp
-#define modf		kmodf
 #define getenv		kgetenv
 #define memccpy		kmemccpy
 #define qsort           kqsort
 #define rand		krand
-#define srand		ksrand
+#define srand		kseedrand
 #define strtod		kstrtod
 #define strtol		kstrtol
 #define strtoul		kstrtoul
@@ -67,5 +64,11 @@ typedef long time_t;
 #define strchrnul	kstrchr
 #define time(n)         ktime(n)
 #define timezone        ktimezone
+
+#define fabs		__builtin_fabs
+#define fmod		kfmod
+#define frexp		kfrexp
+#define ldexp		kldexp
+#define modf		kmodf
 
 #endif

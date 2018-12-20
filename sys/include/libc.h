@@ -292,7 +292,7 @@ extern	double	NaN(void);
 extern	double	Inf(int);
 extern	int	isNaN(double);
 extern	int	isInf(double, int);
-#ifndef EMU
+#ifndef EMU					/* enforce exclusion of FP funcs within kernel */
 extern	ulong	umuldiv(ulong, ulong, ulong);
 extern	long	muldiv(long, long, long);
 
@@ -322,7 +322,6 @@ extern	double	fmod(double, double);
 #define PIO2	1.570796326794896619231e0
 #define PI	(PIO2+PIO2)
 
-#define fabs(x)	    __builtin_fabs((x))
 #define NaN()	    __builtin_nan("")
 #define Inf(s)	    __builtin_copysign(__builtin_inf(), (s))
 #define isNaN(x)    __builtin_isnan((x))

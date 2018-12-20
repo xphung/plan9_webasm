@@ -12,8 +12,9 @@
 #include <tos.h>
 #include "pwd.h"
 
-char *hosttype = "POSIX";
-char *cputype = "Wasm32";
+Procs	procs;
+char	*hosttype = "POSIX";
+char	*cputype = "Wasm32";
 
 /* Structure used for os specific data: */
 typedef struct Sem Sem;
@@ -89,7 +90,8 @@ pexit(char *msg, int t)
 	}
 	free(p->os);
 	free(p);
-  print("pexit: %s: %s\n", p->text, msg); _exits("termination by pexit\n"); //pthread_exit(0);
+	print("pexit: %s: %s\n", p->text, msg);
+	_exits("termination by pexit\n"); //pthread_exit(0);
 }
 
 void
@@ -162,18 +164,25 @@ kproc(char *name, void (*func)(void*), void *arg, int flags)
 		panic("thr_create failed\n");
 	pthread_attr_destroy(&attr);
 #endif
-  
-  print("thread creation not availsble\n");
+
+	__builtin_trap();
 }
 
-#if 0
-int
-segflush(void *va, ulong len)
-{
-  print("segflush: failure (%d) address %lud\n", -1, va);
-	return (int)-1;
+Proc *proctab(int n) {
+	Proc *p;
+	lock(&procs.l);
+	for (p = procs.head; p && n; n--) p = p->next;
+	unlock(&procs.l);
+	return p;
 }
-#endif
+
+Proc *procpid(long pid) {
+	Proc *p;
+	lock(&procs.l);
+	for (p = procs.head; p; p = p->next) if (p->pid == pid) break;
+	unlock(&procs.l);
+	return p;
+}
 
 void
 oshostintr(Proc *p)
@@ -268,6 +277,17 @@ libinit(char *imod)
   up->env->gid = 1; //getgid();
 
 	emuinit(imod);
+	lock(&procs.l);
+	if(procs.tail != nil) {
+		p->prev = procs.tail;
+		procs.tail->next = p;
+	} else {
+		procs.head = p;
+		p->prev = nil;
+	}
+	procs.tail = p;
+	unlock(&procs.l);
+
 }
 
 vlong
@@ -300,71 +320,10 @@ _tas(int *l)
   //mulock.key = 1;
   return v;
 }
-/*
-char *getcwd(char *buffer, size_t n) {
-  return nil;
-}
-*/
+
 int ossetjmp() {
   return 0;
 }
-
-/*
-int  open(const char* path, int flags, ...) {
-  sysfatal("cannot open");
-  return -1;
-}
-
-int mkdir(const char *path, mode_t mode) {
-  sysfatal("cannot mkdir");
-  return -1;
-}
-
-int fstat(int fd, struct stat *st) {
-  sysfatal("cannot fstat");
-  return -1;
-}
-
-int stat(const char * path, struct stat * buf) {
-  sysfatal("cannot stat");
-  return -1;
-}
-
-vlong  lseek(int fd, vlong pos, int flags) {
-  sysfatal("cannot seek");
-  return -1;
-}
-
-ssize_t kconsread(int fd, void *buffer, size_t n) {
-  return js_read(fd, buffer, n);
-}
-
-ssize_t kconswrite(int fd, const void *buffer, size_t n) {
-  return js_write(fd, buffer, n);
-}
-
-#include "grp.h"
-struct group *getgrgid(gid_t gid)
-{
-  struct group *res;
-  size_t size=0, nmem=0;
-  //__getgr_a(0, gid, &gr, &line, &size, &mem, &nmem, &res);
-  return 0;
-}
-
-#include "pwd.h"
-struct passwd *getpwuid(uid_t uid)
-{
-  struct passwd *res;
-  //__getpw_a(0, uid, &pw, &line, &size, &res);
-  return 0;
-}
-
-uid_t getuid(void)
-{
-  return -1;
-}
- */
 
 void
 addprog(Proc *p)
@@ -421,30 +380,6 @@ void *pthread_getspecific(pthread_key_t key) {
 int pthread_setspecific(pthread_key_t key, const void *data) {
   pthread_specific_data = data;
   return 0;
-}
-
-static int
-progqidwidth(Chan *c)
-{
-  char buf[32];
-  
-  return sprint(buf, "%lud", c->qid.vers);
-}
-
-int
-progfdprint(Chan *c, int fd, int w, char *s, int ns)
-{
-  int n;
-  
-  if(w == 0)
-    w = progqidwidth(c);
-  n = snprint(s, ns, "%3d %.2s %C %4ld (%.16llux %*lud %.2ux) %5ld %8lld %s\n",
-              fd,
-              &"r w rw"[(c->mode&3)<<1],
-              devtab[c->type]->dc, c->dev,
-              c->qid.path, w, c->qid.vers, c->qid.type,
-              c->iounit, c->offset, c->name->s);
-  return n;
 }
 
 char* clipread(void) {

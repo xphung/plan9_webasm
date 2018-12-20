@@ -52,6 +52,7 @@ typedef int    Devgen(Chan*, char*, Dirtab*, int, int, Dir*);
 enum
 {
 	NERR		= 32,
+	DOMLEN		= 48,		/* from #include <authserv.h> */
 	KNAMELEN	= 28,
 	MAXROOT		= 5*KNAMELEN, 	/* Maximum root pathname len of devfs-* */
 	NUMSIZE		= 11,
@@ -447,6 +448,7 @@ struct Rootdata
 };
 
 extern	Dev*	devtab[];
+extern	char	hostdomain[DOMLEN];
 extern	char	*ossysname;
 extern	char	*eve;
 extern	Queue*	kbdq;

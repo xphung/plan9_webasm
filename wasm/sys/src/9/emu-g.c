@@ -13,6 +13,7 @@ extern Dev consdevtab;
 extern Dev envdevtab;
 extern Dev mntdevtab;
 extern Dev pipedevtab;
+extern Dev procdevtab;
 extern Dev snarfdevtab;
 extern Dev dupdevtab;
 extern Dev ssldevtab;
@@ -23,11 +24,11 @@ Dev* devtab[]={
 	&envdevtab,
 	&mntdevtab,
 	&pipedevtab,
+	&procdevtab,
 	&snarfdevtab,
 	&dupdevtab,
   &indirdevtab,
 	nil, //&ssldevtab,
-	nil,
 	nil,
 	nil,
 	nil,

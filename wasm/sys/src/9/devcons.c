@@ -6,78 +6,79 @@
 #include	"libsec.h"
 #include	"keyboard.h"
 
-extern	int cflag;
-	int	exdebug;
-extern	int keepbroken;
-
 enum
 {
 	Qdir,
 	Qcons,
 	Qconsctl,
 	Qdrivers,
+	Qhostdomain,
 	Qhostowner,
 	Qhoststdin,
 	Qhoststdout,
 	Qhoststderr,
-	Qjit,
 	Qkeyboard,
 	Qkprint,
 	Qmemory,
-	Qmsec,
-	Qnotquiterandom,
 	Qnull,
+	Qosversion,
+	Qpgrpid,
+	Qpid,
+	Qppid,
 	Qrandom,
+	Qreboot,
 	Qscancode,
 	Qsysctl,
 	Qsysname,
 	Qtime,
-	Quser
+	Quser,
+	Qzero
 };
 
-Dirtab contab[] =
+Dirtab consdir[] =
 {
 	".",	{Qdir, 0, QTDIR},	0,		DMDIR|0555,
-	"cons",		{Qcons},	0,	0666,
-	"consctl",	{Qconsctl},	0,	0222,
-	"drivers",	{Qdrivers},	0,	0444,
-	"hostowner",	{Qhostowner},	0,	0644,
-	"hoststdin",	{Qhoststdin},	0,	0444,
-	"hoststdout",	{Qhoststdout},	0,	0222,
-	"hoststderr",	{Qhoststderr},	0,	0222,
-	"jit",	{Qjit},	0,	0666,
-	"keyboard",	{Qkeyboard},	0,	0666,
-	"kprint",	{Qkprint},	0,	0444,
-	"memory",	{Qmemory},	0,	0444,
-	"msec",		{Qmsec},	NUMSIZE,	0444,
-	"notquiterandom",	{Qnotquiterandom},	0,	0444,
-	"null",		{Qnull},	0,	0666,
-	"random",	{Qrandom},	0,	0444,
-	"scancode",	{Qscancode},	0,	0444,
-	"sysctl",	{Qsysctl},	0,	0644,
-	"sysname",	{Qsysname},	0,	0644,
-	"time",		{Qtime},	0,	0644,
-	"user",		{Quser},	0,	0644,
+	"cons",		{Qcons},	0,		0666,
+	"consctl",	{Qconsctl},	0,		0222,
+	"drivers",	{Qdrivers},	0,		0444,
+	"hostowner",	{Qhostowner},	0,		0644,
+	"hostdomain",	{Qhostdomain},	DOMLEN,		0664,
+	"hoststdin",	{Qhoststdin},	0,		0444,
+	"hoststdout",	{Qhoststdout},	0,		0222,
+	"hoststderr",	{Qhoststderr},	0,		0222,
+	"keyboard",	{Qkeyboard},	0,		0666,
+	"kprint",	{Qkprint},	0,		0444,
+	"memory",	{Qmemory},	0,		0444,
+	"null",		{Qnull},	0,		0666,
+	"osversion",	{Qosversion},	0,		0444,
+	"pgrpid",	{Qpgrpid},	NUMSIZE,	0444,
+	"pid",		{Qpid},		NUMSIZE,	0444,
+	"ppid",		{Qppid},	NUMSIZE,	0444,
+	"random",	{Qrandom},	0,		0444,
+	"reboot",	{Qreboot},	0,		0660,
+	"scancode",	{Qscancode},	0,		0444,
+	"sysctl",	{Qsysctl},	0,		0644,
+	"sysname",	{Qsysname},	0,		0644,
+	"time",		{Qtime},	0,		0644,
+	"user",		{Quser},	0,		0644,
+	"zero",		{Qzero},	0,		0444,
 };
+
+extern	int	cflag;
+extern	int	dflag;
+
+char	*ossysname;
+vlong	timeoffset;
 
 Queue*	gkscanq;		/* Graphics keyboard raw scancodes */
 char*	gkscanid;		/* name of raw scan format (if defined) */
 Queue*	gkbdq;			/* Graphics keyboard unprocessed input */
-Queue*	kbdq;			/* Console window unprocessed keyboard input */
 Queue*	lineq;			/* processed console input */
-
-char	*ossysname;
-
 static struct
 {
 	RWlock l;
 	Queue*	q;
-} kprintq;
-
-vlong	timeoffset;
-extern	int	dflag;
-extern	char**	rebootargv;
-static	int	sysconwrite(void*, ulong);
+}	kprintq;
 
 static struct
 {
@@ -95,30 +96,19 @@ static struct
 	int	count;
 } kbd;
 
-#if 0
-void
-kbdslave(void *a)
+enum
 {
-	char b;
+	CMhalt,
+	CMreboot,
+	CMpanic,
+};
 
-	USED(a);
-	for(;;) {
-		b = readkbd();
-		if(kbd.raw == 0){
-			switch(b){
-			case 0x15:
-				cons_write(1, "^U\n", 3);
-				break;
-			default:
-				cons_write(1, &b, 1);
-				break;
-			}
-		}
-		qproduce(kbdq, &b, 1);
-	}
-	/* pexit("kbdslave", 0); */	/* not reached */
-}
-#endif
+Cmdtab rebootmsg[] =
+{
+	CMhalt,		"halt",		1,
+	CMreboot,	"reboot",	0,
+	CMpanic,	"panic",	0,
+};
 
 void
 gkbdputc(Queue *q, int ch)
@@ -136,7 +126,7 @@ gkbdputc(Queue *q, int ch)
 		return;
 	}
 	if(collecting) {
-		int c;
+		long c;
 		nk += runetochar((char*)&kc[nk], &r);
 		c = latin1(kc, nk);
 		if(c < -1)	/* need more keystrokes */
@@ -158,9 +148,6 @@ gkbdputc(Queue *q, int ch)
 void
 consinit(void)
 {
-	kbdq = qopen(512, 0, nil, nil);
-	if(kbdq == 0)
-		panic("no memory");
 	lineq = qopen(2*1024, 0, nil, nil);
 	if(lineq == 0)
 		panic("no memory");
@@ -170,43 +157,28 @@ consinit(void)
 	randominit();
 }
 
-/*
- *  return true if current user is eve
- */
-int
-iseve(void)
-{
-	return strcmp(eve, up->env->user) == 0;
-}
-
 static Chan*
 consattach(char *spec)
 {
-	static int kp;
-
-	if(kp == 0 && !dflag) {
-		kp = 1;
-		//kproc("kbd", kbdslave, 0, 0);
-	}
 	return devattach('c', spec);
 }
 
 static Walkqid*
 conswalk(Chan *c, Chan *nc, char **name, int nname)
 {
-	return devwalk(c, nc, name, nname, contab, nelem(contab), devgen);
+	return devwalk(c, nc, name, nname, consdir, nelem(consdir), devgen);
 }
 
 static int
 consstat(Chan *c, uchar *db, int n)
 {
-	return devstat(c, db, n, contab, nelem(contab), devgen);
+	return devstat(c, db, n, consdir, nelem(consdir), devgen);
 }
 
 static Chan*
 consopen(Chan *c, int omode)
 {
-	c = devopen(c, omode, contab, nelem(contab), devgen);
+	c = devopen(c, omode, consdir, nelem(consdir), devgen);
 	switch((ulong)c->qid.path) {
 	case Qconsctl:
 		incref(&kbd.ctl);
@@ -284,71 +256,22 @@ consread(Chan *c, void *va, long n, vlong offset)
 	int send;
 	char *p, buf[64], ch;
 
-	if(c->qid.type & QTDIR)
-		return devdirread(c, va, n, contab, nelem(contab), devgen);
+	if(n <= 0)
+		return n;
 
-	switch((ulong)c->qid.path) {
-	default:
-		error(Egreg);
-
-	case Qsysctl:
-		return readstr(offset, va, n, VERSION);
-
-	case Qsysname:
-		if(ossysname == nil)
-			return 0;
-		return readstr(offset, va, n, ossysname);
-
-	case Qrandom:
-		return randomread(va, n);
-
-	case Qnotquiterandom:
-		return 0;
-		//genrandom(va, n);
-		//return n;
-
-	case Qhostowner:
-		return readstr(offset, va, n, eve);
-
-	case Qhoststdin:
-		return cons_read(0, (long)va, n);	/* should be pread */
-
-	case Quser:
-		return readstr(offset, va, n, up->env->user);
-
-	case Qjit:
-		snprint(buf, sizeof(buf), "%d", cflag);
-		return readstr(offset, va, n, buf);
-
-	case Qtime:
-		snprint(buf, sizeof(buf), "%.lld", timeoffset + nsec() / 1000);
-		return readstr(offset, va, n, buf);
-
-	case Qdrivers:
-		return devtabread(c, va, n, offset);
-
-	case Qmemory:
-		return poolread(va, n, offset);
-
-	case Qnull:
-		return 0;
-
-	case Qmsec:
-		return readnum(offset, va, n, nsec() / 1000000, NUMSIZE);
+	switch((ulong)c->qid.path){
+	case Qdir:
+		return devdirread(c, va, n, consdir, nelem(consdir), devgen);
 
 	case Qcons:
-		if(kbd.raw) return cons_read(0, (long)va, n);
-		//qlock(&kbd.q);
-		//if(waserror()){
-		//	qunlock(&kbd.q);
-		//	nexterror();
-		//}
+		if(kbd.raw)
+			return tty_read(0, (long)va, n);
 
-		//if(dflag)
-		//	error(Enonexist);
+		if(dflag)
+			error(Enonexist);
 
 		while(!qcanread(lineq)) {
-			size_t r = cons_read(0, (long)(&ch), 1);
+			size_t r = tty_read(0, (long)(&ch), 1);
 			if(r<0) error("read stdin"); else if(!r) ch = 0x04; //if(!r) continue;
 			send = 0;
 
@@ -362,12 +285,12 @@ consread(Chan *c, void *va, long n, vlong offset)
 				case '\b':
 					if(kbd.x) {
 						kbd.x--;
-						cons_write(1, (long)("\b \b"), 3);
+						tty_write(1, (long)("\b \b"), 3);
 					}
 					break;
 				case 0x15:
 					kbd.x = 0;
-					cons_write(1, (long)("^U\n"), 3);
+					tty_write(1, (long)("^U\n"), 3);
 					break;
 				case 0x1c:
 					exits("SIGQUIT");
@@ -381,7 +304,7 @@ consread(Chan *c, void *va, long n, vlong offset)
 					send = 1;
 				default:
 					kbd.line[kbd.x++] = ch;
-					cons_write(1, (long)(&ch), 1);
+					tty_write(1, (long)(&ch), 1);
 					break;
 				}
 			}
@@ -413,22 +336,82 @@ consread(Chan *c, void *va, long n, vlong offset)
 		poperror();
 		runlock(&kprintq.l);
 		return n;
+
+	case Qpgrpid:
+		return readnum((ulong)offset, va, n, up->env->pgrp->pgrpid, NUMSIZE);
+
+	case Qpid:
+		return readnum((ulong)offset, va, n, up->pid, NUMSIZE);
+
+	case Qppid:
+		return -1; //readnum((ulong)offset, buf, n, up->parentpid, NUMSIZE);
+
+	case Qtime:
+		snprint(buf, sizeof(buf), "%.lld", timeoffset + nsec() / 1000);
+		return readstr(offset, va, n, buf);
+
+	case Qhostowner:
+		return readstr(offset, va, n, eve);
+
+	case Qhostdomain:
+		return readstr((ulong)offset, va, n, hostdomain);
+
+	case Qhoststdin:
+		return tty_read(0, (long)va, n);	/* should be pread */
+
+	case Quser:
+		return readstr(offset, va, n, up->env->user);
+
+	case Qnull:
+		return 0;
+
+	case Qsysctl:
+		return readstr(offset, va, n, VERSION);
+
+	case Qsysname:
+		if(ossysname == nil)
+			return 0;
+		return readstr(offset, va, n, ossysname);
+
+	case Qrandom:
+		return randomread(va, n);
+
+	case Qdrivers:
+		return devtabread(c, va, n, offset);
+
+	case Qmemory:
+		return poolread(va, n, offset);
+
+	case Qzero:
+		memset(va, 0, n);
+		return n;
+
+	case Qosversion:
+		snprint(buf, sizeof buf, "2000");
+		n = readstr((ulong)offset, va, n, buf);
+		return n;
+
+	default:
+		print("consread %#llux\n", c->qid.path);
+		error(Egreg);
 	}
+	return -1;		/* never reached */
+	
 }
 
 static long
 conswrite(Chan *c, void *va, long n, vlong offset)
 {
-	char buf[128], *a, ch;
+	char buf[256], ch;
+	char *a = (char *)va;
 	int x;
+	Cmdbuf *cb;
+	Cmdtab *ct;
 
 	if(c->qid.type & QTDIR)
 		error(Eperm);
 
 	switch((ulong)c->qid.path) {
-	default:
-		error(Egreg);
-
 	case Qcons:
 		if(canrlock(&kprintq.l)){
 			if(kprintq.q != nil){
@@ -443,11 +426,8 @@ conswrite(Chan *c, void *va, long n, vlong offset)
 			}
 			runlock(&kprintq.l);
 		}
-		return cons_write(1, (long)va, n);
-
-	case Qsysctl:
-		return sysconwrite(va, n);
-
+		return tty_write(1, (long)va, n);
+		
 	case Qconsctl:
 		if(n >= sizeof(buf))
 			n = sizeof(buf)-1;
@@ -456,9 +436,8 @@ conswrite(Chan *c, void *va, long n, vlong offset)
 		for(a = buf; a;){
 			if(strncmp(a, "rawon", 5) == 0){
 				kbd.raw = 1;
-				/* clumsy hack - wake up reader */
 				ch = 0;
-				qwrite(kbdq, &ch, 1);
+				//qwrite(kbdq, &ch, 1);  /* wake up reader not required as consdev is now single threaded */
 			} else if(strncmp(buf, "rawoff", 6) == 0){
 				kbd.raw = 0;
 			}
@@ -475,9 +454,6 @@ conswrite(Chan *c, void *va, long n, vlong offset)
 		}
 		break;
 
-	case Qnull:
-		break;
-
 	case Qtime:
 		if(n >= sizeof(buf))
 			n = sizeof(buf)-1;
@@ -487,21 +463,16 @@ conswrite(Chan *c, void *va, long n, vlong offset)
 		break;
 
 	case Qhostowner:
-		if(!iseve())
-			error(Eperm);
-		if(offset != 0 || n >= sizeof(buf))
-			error(Ebadarg);
-		memmove(buf, va, n);
-		buf[n] = '\0';
-		if(n > 0 && buf[n-1] == '\n')
-			buf[--n] = '\0';
-		if(n == 0)
-			error(Ebadarg);
-		/* renameuser(eve, buf); */
-		/* renameproguser(eve, buf); */
-		kstrdup(&eve, buf);
-		kstrdup(&up->env->user, buf);
-		break;
+		return hostownerwrite(a, n);
+
+	case Qhostdomain:
+		return hostdomainwrite(a, n);
+
+	case Qhoststdout:
+		return tty_write(1, (long)va, n);
+
+	case Qhoststderr:
+		return tty_write(2, (long)va, n);
 
 	case Quser:
 		if(!iseve())
@@ -516,24 +487,39 @@ conswrite(Chan *c, void *va, long n, vlong offset)
 			buf[--n] = '\0';
 		if(n == 0)
 			error(Ebadarg);
-		setid(buf, 0);
+		panic("/dev/user"); //setid(buf, 0);
 		break;
 
-	case Qhoststdout:
-		return cons_write(1, (long)va, n);
+	case Qnull:
+		break;
 
-	case Qhoststderr:
-		return cons_write(2, (long)va, n);
+	case Qsysctl:
+	case Qreboot:
+		if(!iseve())
+			error(Eperm);
+		cb = parsecmd(a, n);
 
-	case Qjit:
-		if(n >= sizeof(buf))
-			n = sizeof(buf)-1;
-		strncpy(buf, va, n);
-		buf[n] = '\0';
-		x = (int) strtoll(buf, 0, 0);
-		if(x < 0 || x > 9)
-			error(Ebadarg);
-		cflag = x;
+		if(waserror()) {
+			free(cb);
+			nexterror();
+		}
+		ct = lookupcmd(cb, rebootmsg, nelem(rebootmsg));
+		switch(ct->index) {
+		case CMhalt:
+			if(cb->nf > 1)
+				x = (int) strtoll(cb->f[1], 0, 0);
+			else
+				x = 0;
+			cleanexit(x);		/* XXX ignored for the time being (and should be a string anyway) */
+			break;
+		case CMreboot:
+			osreboot(cb->f[1], cb->f+1);
+			break;
+		case CMpanic:
+			panic("/dev/reboot");
+		}
+		poperror();
+		free(cb);
 		break;
 
 	case Qsysname:
@@ -547,43 +533,13 @@ conswrite(Chan *c, void *va, long n, vlong offset)
 			buf[n-1] = 0;
 		kstrdup(&ossysname, buf);
 		break;
+
+	default:
+		print("conswrite: %#llux\n", c->qid.path);
+		error(Egreg);
 	}
 	return n;
 }
-
-static int	
-sysconwrite(void *va, ulong count)
-{
-	Cmdbuf *cb;
-	int e;
-	cb = parsecmd(va, count);
-	if(waserror()){
-		free(cb);
-		nexterror();
-	}
-	if(cb->nf == 0)
-		error(Enoctl);
-	if(strcmp(cb->f[0], "reboot") == 0){
-		osreboot(rebootargv[0], rebootargv);
-		error("reboot not supported");
-	}else if(strcmp(cb->f[0], "halt") == 0){
-		if(cb->nf > 1)
-			e = (int) strtoll(cb->f[1], 0, 0);
-		else
-			e = 0;
-		cleanexit(e);		/* XXX ignored for the time being (and should be a string anyway) */
-	}else if(strcmp(cb->f[0], "broken") == 0)
-		keepbroken = 1;
-	else if(strcmp(cb->f[0], "nobroken") == 0)
-		keepbroken = 0;
-	else if(strcmp(cb->f[0], "exdebug") == 0)
-		exdebug = !exdebug;
-	else
-		error(Enoctl);
-	poperror();
-	free(cb);
-	return count;
-} 
 
 Dev consdevtab = {
 	'c',

@@ -21,6 +21,7 @@
 *.a
 *.la
 *.lo
+/musl/
 
 # Shared objects (inc. Windows DLLs)
 *.dll
@@ -32,8 +33,7 @@
 *.exe
 *.out
 *.app
-*.i*86
-*.x86_64
+*.wasm
 *.hex
 
 # Debug files

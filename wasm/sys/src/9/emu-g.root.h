@@ -3,7 +3,7 @@ Dirtab roottab[10] = {
 	"",	{0, 0, QTDIR},	 0,	0555,
 	"dev",	{1, 0, QTDIR},	 0,	0555,
 	"fd",	{2, 0, QTDIR},	 0,	0555,
-	"prog",	{3, 0, QTDIR},	 0,	0555,
+	"proc",	{3, 0, QTDIR},	 0,	0555,
 	"prof",	{4, 0, QTDIR},	 0,	0555,
 	"net",	{5, 0, QTDIR},	 0,	0555,
 	"net.alt",	{6, 0, QTDIR},	 0,	0555,

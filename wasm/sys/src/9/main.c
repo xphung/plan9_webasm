@@ -20,8 +20,6 @@ int	tkstylus;	/* libinterp/tk.c */
 	int	dflag;
 	int	vflag;
 	int	vflag;
-	Procs	procs;
-	char	*eve;
 	int	Xsize	= 640;
 	int	Ysize	= 480;
 	int	bflag = 1;
@@ -328,7 +326,7 @@ kprint(2, "emuinit5: bind Dir=%d\n", sizeof(Dir));
 	kbind("#^", "/chan", MBEFORE);
 	//kbind("#m", "/dev", MBEFORE);	/* pointer */
 	kbind("#c", "/dev", MBEFORE);
-	//kbind("#p", "/prog", MREPL);
+	kbind("#p", "/proc", MREPL);
 	kbind("#d", "/fd", MREPL);
 	//kbind("#I", "/net", MAFTER);	/* will fail on Plan 9 */
 
@@ -374,7 +372,7 @@ error(char *err)
 	if(err != up->env->errstr && up->env->errstr != nil)
 		kstrcpy(up->env->errstr, err, ERRMAX);
 //	ossetjmp(up->estack[NERR-1]);
-  kprint(2, "sys: %s%#p", up->env->errstr, 100+(up->nerr));
+	kprint(2, "sys: %s%#p", up->env->errstr, 100+(up->nerr));
 }
 
 void
@@ -391,7 +389,7 @@ exhausted(char *resource)
 void
 nexterror(void)
 {
-  _exits(up->env->errstr); //oslongjmp(nil, up->estack[--up->nerr], 1);
+	_exits(up->env->errstr); //oslongjmp(nil, up->estack[--up->nerr], 1);
 }
 
 /* for dynamic modules - functions not macros */
@@ -442,7 +440,7 @@ kprint(int fd, const char *fmt, ...)
   n = vseprint(buf, buf+sizeof buf, fmt, va) - buf;
   va_end(va);
   
-  cons_write(fd, (long)buf, n);
+  tty_write(fd, (long)buf, n);
   return 1;
 }
 

@@ -5,8 +5,7 @@ dev
 	env
 	mnt
 	pipe
-#	proc
-#	prog
+	proc
 #	prof
 	snarf
 #	srv

@@ -113,7 +113,7 @@ dupread(Chan *c, void *va, long n, vlong offset)
 			cclose(c);
 			nexterror();
 		}
-		progfdprint(c, fd, 0, buf, sizeof buf);
+		procfdprint(c, fd, 0, buf, sizeof buf);
 		poperror();
 		cclose(c);
 		return readstr((ulong)offset, va, n, buf);

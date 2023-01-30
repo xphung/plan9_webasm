@@ -1,13 +1,13 @@
 #!/usr/bin/env python
-import BaseHTTPServer, SimpleHTTPServer
+from http.server import HTTPServer, SimpleHTTPRequestHandler
  
 port=8001
-print "Running on port %d" % port
+print("Running on port %d" % port)
  
-SimpleHTTPServer.SimpleHTTPRequestHandler.extensions_map['.wasm'] = 'application/wasm'
+SimpleHTTPRequestHandler.extensions_map['.wasm'] = 'application/wasm'
  
-httpd = BaseHTTPServer.HTTPServer(('localhost', port), SimpleHTTPServer.SimpleHTTPRequestHandler)
+httpd = HTTPServer(('localhost', port), SimpleHTTPRequestHandler)
  
-print "Mapping \".wasm\" to \"%s\"" % SimpleHTTPServer.SimpleHTTPRequestHandler.extensions_map['.wasm']
+print("Mapping \".wasm\" to \"%s\"" % SimpleHTTPRequestHandler.extensions_map['.wasm'])
 httpd.serve_forever()
 
